@@ -22,12 +22,19 @@ export async function GET(req: NextRequest) {
       `${BACKEND_URL}/api/rag/status/${encodeURIComponent(repo)}`,
       { cache: "no-store" }
     );
-    const data = await res.json();
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      return NextResponse.json(
+        { indexed: false, vector_count: 0, error: "Backend returned non-JSON" },
+        { status: 200 }
+      );
+    }
+    const data = await res.json().catch(() => ({ indexed: false, vector_count: 0 }));
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json(
       { indexed: false, vector_count: 0, error: "Backend unavailable" },
-      { status: 503 }
+      { status: 200 }
     );
   }
 }

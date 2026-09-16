@@ -23,8 +23,15 @@ export async function GET() {
     });
     clearTimeout(timeoutId);
 
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      return NextResponse.json(
+        { backend: "local", repos: [] },
+        { status: 200 }
+      );
+    }
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ backend: "local", repos: [] }));
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json(

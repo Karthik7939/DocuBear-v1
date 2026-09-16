@@ -38,6 +38,9 @@ from services.rag_service import RAGService
 # Documentation chatbot
 from services.chat_service import ChatService
 
+# On-demand single-file documentation
+from services.file_doc_service import FileDocumentationService
+
 # Agents
 from agents.preprocessing.preprocessing_agent import PreprocessingAgent
 from agents.understanding.understanding_agent import UnderstandingAgent
@@ -158,6 +161,19 @@ def get_chat_service() -> ChatService:
     return ChatService(
         repository_service=get_repository_service(),
         git_service=get_git_service(),
+        llm_client=LLMService(),
+    )
+
+
+def get_file_doc_service() -> FileDocumentationService:
+    """Construct and return a FileDocumentationService instance.
+
+    Returns:
+        FileDocumentationService: Wired with RepositoryService (local clone
+        path resolution) and LLMService (single-file doc generation).
+    """
+    return FileDocumentationService(
+        repository_service=get_repository_service(),
         llm_client=LLMService(),
     )
 

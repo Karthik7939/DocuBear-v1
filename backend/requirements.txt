@@ -64,6 +64,10 @@ tree-sitter-typescript>=0.21.0
 # NumPy -- required by FAISS and sentence-transformers
 numpy>=1.24.0
 
+# SciPy -- used by eval/paper_table_generator.py for Wilcoxon signed-rank test
+# (non-parametric paired comparison at small n for research paper evaluation)
+scipy>=1.11.0
+
 # Pinecone vector database client (cloud-hosted vector store)
 # Used when RAG_VECTOR_STORE_BACKEND=pinecone in .env
 pinecone>=3.0.0

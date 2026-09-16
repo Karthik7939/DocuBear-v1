@@ -1,0 +1,15 @@
+\begin{table}[ht]
+\centering
+\caption{Documentation Quality, Faithfulness, and Generation Latency across Experimental Conditions (mean $\pm$ std). '--' denotes conditions requiring separate baseline pipeline runs.}
+\label{tab:main_results}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Approach} & \textbf{Quality (0--100)} & \textbf{Faithfulness (\%)} & \textbf{Halluc./Doc} & \textbf{Latency (s)} \\
+\hline
+Direct Diff (No RAG) & \textit{--} & \textit{--} & \textit{--} & \textit{--} \\
+Standard Vector RAG & \textit{--} & \textit{--} & \textit{--} & \textit{--} \\
+\textbf{DocAgent-v1 (Full Hybrid)} & \textbf{87.3 $\pm$ 2.6} & \textbf{\textit{--}} & \textbf{\textit{--}} & \textbf{104.2s $\pm$ 11.7s} \\
+\hline
+\multicolumn{5}{l}{\textit{DocAgent quality scores sourced from backend.log (real workflow runs). Baselines require separate pipeline runs.}} \\
+\end{tabular}
+\end{table}

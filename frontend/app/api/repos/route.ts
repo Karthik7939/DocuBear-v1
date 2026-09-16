@@ -11,13 +11,11 @@ export async function POST(req: NextRequest) {
   const { owner, name, gitbookSpaceId } = await req.json();
 
   const repo: Repo = {
-    id: crypto.randomUUID(),
+    id: `${owner}_${name}`,
     owner,
     name,
     fullName: `${owner}/${name}`,
     connectedAt: new Date().toISOString(),
-    // Not yet confirmed — flips to true once a GitHub webhook event is
-    // actually received and processed for this repo (see /api/webhook).
     webhookActive: false,
     gitbookSpaceId,
   };

@@ -102,6 +102,11 @@ class DocumentValidationResult:
     formatting_score: float = 0.0
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # style_warnings is a SEPARATE counter from warnings.
+    # warnings = lint issues (fence balance, empty headings) → feeds formatting_score.
+    # style_warnings = prose style issues (avg sentence length) → feeds readability.
+    # Keeping them distinct ensures a fence error does not penalise two score axes.
+    style_warnings: list[str] = field(default_factory=list)
     missing_sections: list[str] = field(default_factory=list)
     hallucinations: list[str] = field(default_factory=list)
     summary: str = ""
@@ -312,7 +317,7 @@ class ValidationAgent:
         if empty_headings:
             warnings.append(f"{file_path}: {len(empty_headings)} empty heading(s) found")
 
-        # Formatting score
+        # Formatting score: derived from lint warnings ONLY (fence balance, empty headings)
         deductions = len(warnings) * 5 + len(errors) * 15
         formatting_score = max(0.0, 100.0 - deductions)
 
@@ -322,11 +327,24 @@ class ValidationAgent:
             0.0, 100.0 - (len(missing) / total_expected) * 100
         ) if total_expected else 100.0
 
+        # Readability check: sentence length (separate counter from lint warnings).
+        # This populates style_warnings, NOT warnings, so it does not affect
+        # formatting_score. A prose issue and a fence issue are independent signals.
+        style_warnings: list[str] = []
+        sentences = [s.strip() for s in re.split(r'[.!?]', content) if s.strip()]
+        if sentences:
+            avg_words = sum(len(s.split()) for s in sentences) / len(sentences)
+            if avg_words > 40:
+                style_warnings.append(
+                    f"{file_path}: Avg sentence length {avg_words:.0f} words (>40 word threshold)"
+                )
+
         result.formatting_score = formatting_score
         result.completeness_score = completeness_score
         result.accuracy_score = 80.0   # Default — updated by LLM validation if available
         result.errors = errors
         result.warnings = warnings
+        result.style_warnings = style_warnings
         result.missing_sections = missing
         return result
 
@@ -659,16 +677,18 @@ class ValidationAgent:
         avg_accuracy = sum(r.accuracy_score for r in doc_results) / len(doc_results)
         avg_formatting = sum(r.formatting_score for r in doc_results) / len(doc_results)
 
-        # Readability: inverse of total warnings count (capped)
-        total_warnings = sum(len(r.warnings) for r in doc_results)
-        readability = max(0.0, 100.0 - total_warnings * 5)
+        # Readability: derived from style_warnings ONLY (sentence-length prose checks).
+        # style_warnings is populated by _validate_structure() separately from
+        # lint warnings, so a fence error does NOT also deflate readability.
+        total_style_warnings = sum(len(r.style_warnings) for r in doc_results)
+        readability = max(0.0, 100.0 - total_style_warnings * 5)
 
-        # Consistency: penalise hallucinations and cross-document contradictions
-        total_hallucinations = sum(len(r.hallucinations) for r in doc_results)
-        consistency = max(
-            0.0,
-            100.0 - total_hallucinations * 10 - len(consistency_issues) * 15,
-        )
+        # Consistency: cross-document contradictions ONLY.
+        # Hallucinations are penalized exclusively in faithfulness_score
+        # (_compute_faithfulness_score). Do NOT subtract hallucinations here —
+        # that would double-count the same signal across two supposedly
+        # independent metrics, making their correlation artificial.
+        consistency = max(0.0, 100.0 - len(consistency_issues) * 15)
 
         # NOTE: WEIGHT_COVERAGE has no corresponding computed score, so it is
         # excluded here. Normalise by the sum of weights actually applied —

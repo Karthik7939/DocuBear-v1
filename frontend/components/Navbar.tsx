@@ -13,6 +13,7 @@ export default function Navbar() {
   const navItems = [
     { name: "Dashboard", href: "/" },
     { name: "Documentation", href: "/review" },
+    { name: "File Docs", href: "/file-docs" },
     { name: "Analytics", href: "/analytics" },
     { name: "GitBook", href: "/gitbook" },
     { name: "Knowledge Base", href: "/knowledge-base" },

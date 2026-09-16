@@ -81,6 +81,12 @@ function scoreStatus(score: number): "good" | "warning" | "danger" {
   return "danger";
 }
 
+function coverageStatus(ratio: number): "good" | "warning" | "danger" {
+  if (ratio >= 0.5) return "good";
+  if (ratio >= 0.2) return "warning";
+  return "danger";
+}
+
 export default function AnalyticsPage() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string>("");
@@ -93,15 +99,21 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetch("/api/repos")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return [];
+        return r.json().catch(() => []);
+      })
       .then((data: Repo[]) => {
         setRepos(data);
-        if (data.length > 0) setSelectedSlug(data[0].id);
+        if (data.length > 0) setSelectedSlug(data[0].id || data[0].fullName);
       })
       .catch(() => setRepos([]));
 
     fetch("/api/rag/knowledge-base")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return null;
+        return r.json().catch(() => null);
+      })
       .then(setKb)
       .catch(() => setKb(null));
   }, []);
@@ -112,7 +124,12 @@ export default function AnalyticsPage() {
     setError(null);
     fetch(`/api/metrics/${encodeURIComponent(selectedSlug)}`)
       .then(async (r) => {
-        const data = await r.json();
+        const contentType = r.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Received non-JSON response from backend");
+        }
+        const data = await r.json().catch(() => null);
+        if (!data) throw new Error("Failed to parse metrics response");
         if (!r.ok) throw new Error(data?.error || "Failed to load metrics");
         setMetrics(data);
       })
@@ -132,7 +149,10 @@ export default function AnalyticsPage() {
     // (5-8s observed) — show a loading state rather than a misleading "—".
     setIndexStatsLoading(true);
     fetch(`/api/rag/status?repo=${encodeURIComponent(metrics.repository)}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return null;
+        return r.json().catch(() => null);
+      })
       .then((d) => setIndexStats(d?.index_stats ?? null))
       .catch(() => setIndexStats(null))
       .finally(() => setIndexStatsLoading(false));
@@ -181,11 +201,14 @@ export default function AnalyticsPage() {
                 onChange={(e) => setSelectedSlug(e.target.value)}
                 className="w-full md:w-72 rounded-full border border-border bg-canvas px-4 py-2.5 text-xs font-semibold text-text transition-all focus:border-teal focus:bg-surface focus:outline-none focus:ring-2 focus:ring-teal/20"
               >
-                {repos.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.fullName}
-                  </option>
-                ))}
+                {repos.map((r) => {
+                  const slug = r.id || r.fullName;
+                  return (
+                    <option key={slug} value={slug}>
+                      {r.fullName}
+                    </option>
+                  );
+                })}
               </select>
             )}
           </div>
@@ -249,13 +272,20 @@ export default function AnalyticsPage() {
               <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-teal">
                 Documentation Quality
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <RadialMeter
                   label="Quality Score"
                   percent={run?.quality_score ?? 0}
                   displayValue={run ? run.quality_score.toFixed(1) : "—"}
                   status={scoreStatus(run?.quality_score ?? 0)}
                   sublabel="LLM-graded formatting, completeness & accuracy"
+                />
+                <RadialMeter
+                  label="Test Coverage Ratio"
+                  percent={run ? run.test_coverage_ratio * 100 : 0}
+                  displayValue={run ? `${Math.round(run.test_coverage_ratio * 100)}%` : "—"}
+                  status={coverageStatus(run?.test_coverage_ratio ?? 0)}
+                  sublabel={run ? `${run.test_files} test files / ${run.source_files} source files` : "No data yet"}
                 />
               </div>
             </FadeIn>

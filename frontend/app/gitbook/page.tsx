@@ -10,6 +10,30 @@ interface RepoItem {
   fullName: string;
 }
 
+interface StandardDocSummary {
+  id: string;
+  repo_id: string;
+  title: string;
+  source_path: string;
+}
+
+interface FileDocSummary {
+  id: string;
+  repoId: string;
+  title: string;
+  sourcePath: string;
+}
+
+/** One selectable row in the "choose files to publish" list. */
+interface PublishableDoc {
+  key: string;
+  /** Path relative to generated_docs/<repo_slug>/, as expected by /api/gitbook/publish-repo. */
+  filename: string;
+  label: string;
+  sublabel: string;
+  kind: "standard" | "file";
+}
+
 export default function GitBookPage() {
   const [apiToken, setApiToken] = useState<string>("");
   const [showToken, setShowToken] = useState<boolean>(false);
@@ -23,6 +47,11 @@ export default function GitBookPage() {
 
   const [publishing, setPublishing] = useState<boolean>(false);
   const [publishResult, setPublishResult] = useState<any>(null);
+
+  const [standardDocs, setStandardDocs] = useState<PublishableDoc[]>([]);
+  const [fileDocs, setFileDocs] = useState<PublishableDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState<boolean>(false);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   // Load saved settings from localStorage and fetch connected repos
   useEffect(() => {
@@ -51,6 +80,76 @@ export default function GitBookPage() {
         setSelectedRepo("Karthik7939/Mindstride-test-repo-v1");
       });
   }, []);
+
+  // Whenever the selected repository changes, load both the standard
+  // documentation suite and the per-file, on-demand docs generated from the
+  // /file-docs page, so the user can pick exactly which ones to publish.
+  useEffect(() => {
+    if (!selectedRepo) {
+      setStandardDocs([]);
+      setFileDocs([]);
+      setSelectedFiles(new Set());
+      return;
+    }
+
+    const repoSlug = selectedRepo.replace("/", "_");
+    setDocsLoading(true);
+
+    Promise.all([
+      fetch("http://127.0.0.1:8000/api/documents")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((docs: StandardDocSummary[]) =>
+          Array.isArray(docs)
+            ? docs
+                .filter((d) => d.repo_id === repoSlug)
+                .map((d) => ({
+                  key: `standard:${d.source_path}`,
+                  filename: d.source_path.slice(d.repo_id.length + 1),
+                  label: d.source_path.slice(d.repo_id.length + 1),
+                  sublabel: "Standard documentation suite",
+                  kind: "standard" as const,
+                }))
+            : []
+        )
+        .catch(() => [] as PublishableDoc[]),
+      fetch(`http://127.0.0.1:8000/api/files/docs/${encodeURIComponent(selectedRepo)}`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((docs: FileDocSummary[]) =>
+          Array.isArray(docs)
+            ? docs.map((d) => ({
+                key: `file:${d.sourcePath}`,
+                filename: `${d.sourcePath}.md`,
+                label: d.sourcePath,
+                sublabel: "File-specific documentation",
+                kind: "file" as const,
+              }))
+            : []
+        )
+        .catch(() => [] as PublishableDoc[]),
+    ]).then(([standard, files]) => {
+      setStandardDocs(standard);
+      setFileDocs(files);
+      // Default: the standard suite pre-selected (matches the previous
+      // "Publish All Docs" behaviour); file-specific docs are opt-in.
+      setSelectedFiles(new Set(standard.map((d) => d.filename)));
+      setDocsLoading(false);
+    });
+  }, [selectedRepo]);
+
+  const toggleFile = (filename: string) => {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filename)) next.delete(filename);
+      else next.add(filename);
+      return next;
+    });
+  };
+
+  const selectAllDocs = () => {
+    setSelectedFiles(new Set([...standardDocs, ...fileDocs].map((d) => d.filename)));
+  };
+
+  const clearAllDocs = () => setSelectedFiles(new Set());
 
   const handleSaveToken = () => {
     localStorage.setItem("docubear_gitbook_token", apiToken);
@@ -93,13 +192,17 @@ export default function GitBookPage() {
     }
   };
 
-  const handlePublishAll = async () => {
+  const handlePublishSelected = async () => {
     if (!selectedRepo) {
       alert("Please select a repository.");
       return;
     }
     if (!spaceId.trim()) {
       alert("Please enter a GitBook Space ID.");
+      return;
+    }
+    if (selectedFiles.size === 0) {
+      alert("Please select at least one document to publish.");
       return;
     }
 
@@ -116,6 +219,7 @@ export default function GitBookPage() {
           space_id: spaceId.trim(),
           api_token: apiToken.trim(),
           public_base_url: publicBaseUrl.trim(),
+          files: Array.from(selectedFiles),
         }),
       });
 
@@ -150,7 +254,7 @@ export default function GitBookPage() {
               GitBook Publishing Hub
             </h1>
             <p className="text-sm font-medium text-muted leading-relaxed">
-              Connect DocuBear directly to your GitBook Spaces. Automatically publish your standard project documentation suite (<code className="text-teal font-bold">README.md</code>, <code className="text-purple-700 font-bold">ARCHITECTURE.md</code>, <code className="text-emerald-700 font-bold">CHANGELOG.md</code>, <code className="text-rose-700 font-bold">SECURITY.md</code>) to live GitBook sites.
+              Connect DocuBear directly to your GitBook Spaces. Choose exactly which documents to publish — the standard project suite (<code className="text-teal font-bold">README.md</code>, <code className="text-purple-700 font-bold">ARCHITECTURE.md</code>, <code className="text-emerald-700 font-bold">CHANGELOG.md</code>, <code className="text-rose-700 font-bold">SECURITY.md</code>, and more), individual file-specific docs generated from the File Docs page, or any mix of both.
             </p>
           </div>
         </div>
@@ -267,17 +371,17 @@ export default function GitBookPage() {
             </div>
           </div>
 
-          {/* One-Click Repository Publishing Box */}
+          {/* Repository Publishing Box */}
           <div className="rounded-2xl border border-border/80 bg-surface p-6 shadow-md shadow-amber-900/5 space-y-5">
             <div className="flex items-center justify-between border-b border-border/60 pb-4">
               <h2 className="text-base font-bold text-text flex items-center gap-2">
                 <svg className="w-5 h-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                Publish Repository Suite to GitBook
+                Publish to GitBook
               </h2>
               <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
-                Full 4-Doc Suite
+                {selectedFiles.size} selected
               </span>
             </div>
 
@@ -300,12 +404,86 @@ export default function GitBookPage() {
               </select>
             </div>
 
+            {/* Document Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-text">
+                  Choose documents to publish
+                </label>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={selectAllDocs} className="text-[11px] font-bold text-accent hover:underline">
+                    Select all
+                  </button>
+                  <span className="text-[11px] text-muted">·</span>
+                  <button type="button" onClick={clearAllDocs} className="text-[11px] font-bold text-muted hover:underline">
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto rounded-xl border border-border bg-white divide-y divide-border/60">
+                {docsLoading ? (
+                  <p className="p-4 text-center text-xs text-muted">Loading documents...</p>
+                ) : standardDocs.length === 0 && fileDocs.length === 0 ? (
+                  <p className="p-4 text-center text-xs text-muted">
+                    No generated documentation found for this repository yet.
+                  </p>
+                ) : (
+                  <>
+                    {standardDocs.length > 0 && (
+                      <div className="p-2">
+                        <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                          Standard Documentation Suite
+                        </p>
+                        {standardDocs.map((d) => (
+                          <label
+                            key={d.key}
+                            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-text hover:bg-canvas cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedFiles.has(d.filename)}
+                              onChange={() => toggleFile(d.filename)}
+                              className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent/30"
+                            />
+                            {d.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {fileDocs.length > 0 && (
+                      <div className="p-2">
+                        <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                          File-Specific Documentation ({fileDocs.length})
+                        </p>
+                        {fileDocs.map((d) => (
+                          <label
+                            key={d.key}
+                            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs font-mono text-text hover:bg-canvas cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedFiles.has(d.filename)}
+                              onChange={() => toggleFile(d.filename)}
+                              className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent/30"
+                            />
+                            <span className="truncate">{d.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Publish Action Button */}
             <div className="pt-2">
               <button
                 type="button"
-                onClick={handlePublishAll}
-                disabled={publishing}
+                onClick={handlePublishSelected}
+                disabled={publishing || selectedFiles.size === 0}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3 text-xs font-bold text-white shadow-md shadow-accent/20 transition-all hover:bg-accent/90 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
               >
                 {publishing ? (
@@ -314,14 +492,14 @@ export default function GitBookPage() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    Publishing Documentation Suite to GitBook...
+                    Publishing to GitBook...
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
-                    Publish All Docs (README, Architecture, Changelog, Security)
+                    Publish {selectedFiles.size} Selected Document{selectedFiles.size === 1 ? "" : "s"}
                   </>
                 )}
               </button>

@@ -38,6 +38,7 @@ CRITICAL RULES:
 - Only rewrite sections that need updating based on the changed files.
 - Do NOT rephrase, reorder, or reformat sections that are not affected.
 - If no existing README is provided, generate a complete README from scratch.
+- STRICT GROUNDING: Do NOT invent or hallucinate any file paths, directories, API endpoints, or frameworks that are not present in the provided Code Context or Project Summary.
 
 Repository: {repository_name}
 Branch: {branch}
@@ -129,6 +130,7 @@ CRITICAL RULES:
   existing ones, or change data flow / dependencies / APIs.
 - Always ensure complete API details and Mermaid flowcharts are included.
 - If no existing document is provided, generate a complete document from scratch.
+- STRICT GROUNDING: Do NOT invent or hallucinate any file paths, directory structures, backend routes, endpoints, or frameworks that do not exist in the provided Code Context or Directory Tree. Formulate architecture claims strictly based on the real code.
 
 Repository: {repository_name}
 Architecture Type: {architecture_type}
@@ -431,4 +433,83 @@ Output the complete updated SECURITY.md with exactly these sections:
 *To report a security vulnerability, please contact the repository owner directly.*
 
 Output Markdown only. No preamble. No explanation.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Per-file documentation — on-demand, single-file generation
+# ---------------------------------------------------------------------------
+
+FILE_DOCUMENTATION_PROMPT: str = """\
+You are a senior software engineer writing focused technical documentation for a
+single source file inside a larger project. Only document THIS file — do not
+describe the whole repository.
+
+CRITICAL RULES:
+- STRICT GROUNDING: Do NOT invent or hallucinate functions, classes, imports,
+  exports, or behavior that is not present in the File Skeleton, the Detected
+  Imports/Exports, or the Retrieved Code Context below.
+- The "Detected Imports" and "Detected Exports" lists were extracted
+  deterministically from the source file (not guessed) — reproduce them under
+  their respective sections exactly as given, optionally with a short
+  one-line explanation of what each import is used for if it's evident from
+  the skeleton/context.
+- If an existing document is provided below, treat this as a regeneration:
+  keep any still-accurate descriptions, but ensure the output reflects the
+  CURRENT file skeleton/imports/exports — do not silently keep stale claims.
+- If nothing is knowable about a section from the material provided, write
+  "Not evident from the available source." instead of guessing.
+
+Repository: {repository_name}
+File: {file_path}
+Language: {language}
+
+=== FILE SKELETON (imports + class/function signatures + docstrings) ===
+{file_skeleton}
+=== END FILE SKELETON ===
+
+Detected Imports (deterministically extracted):
+{imports}
+
+Detected Exports / Top-level Definitions (deterministically extracted):
+{exports}
+
+=== RETRIEVED CODE CONTEXT (RAG chunks scoped to this file) ===
+{rag_context}
+=== END CONTEXT ===
+
+=== EXISTING DOCUMENTATION FOR THIS FILE (if regenerating) ===
+{existing_content}
+=== END EXISTING DOCUMENTATION ===
+
+Output the complete Markdown document with exactly these sections:
+
+# {file_path}
+
+## Overview
+2-4 sentences: what this file is responsible for within the project.
+
+## Change Summary
+A short summary of this file's current purpose and role (if existing
+documentation was provided above, briefly note what materially changed;
+otherwise describe the file as it stands today).
+
+## Key Components
+For each significant class/function from the File Skeleton, a short bullet:
+- **`name(...)`** — what it does, based only on the skeleton/context provided.
+
+## Dependencies & Imports
+List and briefly explain the Detected Imports above.
+
+## Exports / Public API
+List and briefly explain the Detected Exports above — what other files in
+the project would import from this file.
+
+## Usage Notes
+Any notable usage caveats, side effects, or constraints evident from the
+skeleton/context. If none are evident, write "Not evident from the available
+source."
+
+Output Markdown only. No preamble. No explanation. No triple backticks
+wrapping the entire output.
 """

@@ -89,16 +89,18 @@ async def get_repository_metrics(repo_slug: str) -> RepositoryMetrics:
         repo_slug: The folder name under generated_docs/ (underscored form),
                    e.g. 'Blrm123_Navayatra'.
     """
-    if "/" in repo_slug or ".." in repo_slug:
+    # Accept both owner/repo and owner_repo formats
+    normalized_slug = repo_slug.replace("/", "_")
+    if ".." in normalized_slug:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid repository slug")
 
     root = _docs_root()
-    repo_dir = (root / repo_slug).resolve()
+    repo_dir = (root / normalized_slug).resolve()
+
+    repository_name = normalized_slug.replace("_", "/", 1)
 
     if root not in repo_dir.parents or not repo_dir.is_dir():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
-
-    repository_name = repo_slug.replace("_", "/", 1)
 
     run_metrics: Optional[RunMetrics] = None
     metrics_path = repo_dir / "metrics.json"

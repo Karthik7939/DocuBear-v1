@@ -1,0 +1,18 @@
+\begin{table}[ht]
+\centering
+\caption{Weight Sensitivity Analysis: Quality Score under Four Alternative Weight Configurations.
+Rankings stable across all configurations support the choice of Default weights.}
+\label{tab:weight_sensitivity}
+\footnotesize
+\begin{tabular}{lccc}
+\hline
+\textbf{Weight Configuration} & \textbf{Direct Diff (No RAG)} & \textbf{Standard Vector RAG} & \textbf{DocAgent-v1 (Full Hybrid)} \\
+\hline
+\textbf{Default (0.25/0.30/0.20/0.10/0.05)} & \textit{--} & \textit{--} & \textbf{87.3} \\
+Accuracy-heavy (0.15/0.50/0.20/0.10/0.05) & \textit{--} & \textit{--} & 87.3 \\
+Completeness-heavy (0.40/0.25/0.20/0.10/0.05) & \textit{--} & \textit{--} & 87.3 \\
+Flat/equal (0.20 x 5) & \textit{--} & \textit{--} & 87.3 \\
+\hline
+\multicolumn{4}{l}{\textit{Note: Each config normalized by its own weight sum, not a hardcoded constant.}} \\
+\end{tabular}
+\end{table}

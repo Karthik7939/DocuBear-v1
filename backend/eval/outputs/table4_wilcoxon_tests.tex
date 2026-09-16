@@ -1,0 +1,23 @@
+\begin{table}[ht]
+\centering
+\caption{Wilcoxon Signed-Rank Test: DocAgent vs Baselines (paired, exact method).
+Primary evidence: rank-biserial effect size $r_b$ and per-commit data (Appendix).
+p-value reported as a bound; at this sample size it cannot structurally reach $p<0.05$.}
+\label{tab:wilcoxon_tests}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Metric} & \textbf{Comparison} & $W$ & $r_b$ & $p$ (exact, two-sided) \\
+\hline
+Faithfulness & DocAgent vs Direct Diff & \textit{--} & \textit{--} & \textit{NOT MEASURED} \\
+ & DocAgent vs Standard RAG & \textit{--} & \textit{--} & \textit{NOT MEASURED} \\
+\hline
+Quality Score & DocAgent vs Direct Diff & \textit{--} & \textit{--} & \textit{NOT MEASURED} \\
+ & DocAgent vs Standard RAG & \textit{--} & \textit{--} & \textit{NOT MEASURED} \\
+\hline
+NDCG@5 & DocAgent vs Direct Diff & 0.0 & 1.000 & 0.0625 \\
+ & DocAgent vs Standard RAG & 0.0 & 1.000 & 0.0625 \\
+\hline
+\multicolumn{5}{l}{\textit{Exact method (scipy wilcoxon, zero\_method=pratt). Min achievable $p$ at $n=5$: 0.0625.}} \\
+\multicolumn{5}{l}{\textit{Effect size $r_b$ = rank-biserial correlation; does not require asymptotic Z.}} \\
+\end{tabular}
+\end{table}

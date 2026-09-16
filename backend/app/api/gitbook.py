@@ -4,7 +4,7 @@ app/api/gitbook.py
 FastAPI routes for GitBook REST API integration.
 """
 
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,15 @@ class PublishRepoRequest(BaseModel):
     space_id: str = Field(description="Target GitBook Space ID")
     api_token: Optional[str] = Field(default="", description="Optional GitBook Developer API token")
     public_base_url: str = Field(description="Public base URL (e.g. ngrok) where the backend is reachable — used for GitBook's URL import")
+    files: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Paths relative to generated_docs/<repo_slug>/ to publish, e.g. "
+            "['README.md', 'app/api/webhook.py.md']. Omit to publish the "
+            "standard doc suite (README, ARCHITECTURE, WORKFLOW, CHANGELOG, "
+            "SECURITY, REPORTS) for backward compatibility."
+        ),
+    )
 
 
 @router.post("/test-connection")
@@ -77,10 +86,13 @@ async def publish_repo(data: PublishRepoRequest):
     if not data.space_id.strip():
         raise HTTPException(status_code=400, detail="space_id is required")
 
-    result = gitbook_service.publish_repository_docs(
+    filenames = [f.strip() for f in data.files if f.strip()] if data.files is not None else gitbook_service.STANDARD_DOC_FILES
+
+    result = gitbook_service.publish_documents(
         repo_name=data.repository_name.strip(),
         space_id=data.space_id.strip(),
         token=data.api_token.strip() if data.api_token else None,
         public_base_url=data.public_base_url.rstrip("/"),
+        filenames=filenames,
     )
     return result

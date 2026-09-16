@@ -1,26 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
-  process.env.AGENT_BACKEND_URL ||
-  process.env.BACKEND_URL ||
-  "http://localhost:8000";
+  process.env.AGENT_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8000";
 
 /**
- * GET /api/metrics/[repoSlug]
+ * GET /api/files/tree?repository=owner/repo
  *
- * Proxies to the Python backend's analytics endpoint for one repository.
- * repoSlug is the underscored form, e.g. "Owner_repo-name".
+ * Proxies to the Python backend's file-tree endpoint for one repository's
+ * local clone (repositories/<owner>_<repo>/).
  */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ repoSlug: string }> }
-) {
-  const { repoSlug } = await params;
+export async function GET(req: NextRequest) {
+  const repository = req.nextUrl.searchParams.get("repository");
+  if (!repository) {
+    return NextResponse.json({ error: "repository query param required" }, { status: 400 });
+  }
 
   try {
-    const normalizedSlug = repoSlug.includes("/") ? repoSlug.replace("/", "_") : repoSlug;
     const res = await fetch(
-      `${BACKEND_URL}/api/metrics/${encodeURIComponent(normalizedSlug)}`,
+      `${BACKEND_URL}/api/files/tree/${encodeURIComponent(repository)}`,
       { cache: "no-store" }
     );
 
@@ -36,18 +33,8 @@ export async function GET(
     const data = await res.json();
 
     if (!res.ok) {
-      if (res.status === 404) {
-        return NextResponse.json({
-          repository: normalizedSlug.replace("_", "/"),
-          has_run_metrics: false,
-          run_metrics: null,
-          commits_documented: 0,
-          contributors_tracked: 0,
-          contributors: [],
-        });
-      }
       return NextResponse.json(
-        { error: data?.detail || "Metrics request failed" },
+        { error: data?.detail || "Failed to load file tree" },
         { status: res.status }
       );
     }

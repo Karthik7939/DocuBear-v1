@@ -12,6 +12,20 @@ from app.core.config import settings
 
 router = APIRouter()
 
+# The whole-repo Coordinator pipeline (DocumentationAgent) writes exactly
+# these top-level files per repository. Anything else under generated_docs/
+# is a per-file, on-demand document written by FileDocumentationService
+# (see services/file_doc_service.py) and belongs on the /file-docs page's
+# History section instead of the main Documentation dashboard.
+_STANDARD_DOC_NAMES = {
+    "README.md",
+    "ARCHITECTURE.md",
+    "WORKFLOW.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "REPORTS.md",
+}
+
 
 class GeneratedDocumentSummary(BaseModel):
     """Metadata displayed in the frontend documentation dashboard."""
@@ -74,6 +88,13 @@ def _sidecar_path(doc_path: Path) -> Path:
     return doc_path.with_suffix(".prev.md")
 
 
+def _is_standard_doc(relative_path: Path) -> bool:
+    """True for the 6 whole-repo docs (repo_slug/<name>.md), false for anything
+    written by the on-demand single-file documentation feature (which mirrors
+    source paths, e.g. repo_slug/src/utils/helper.py.md)."""
+    return len(relative_path.parts) == 2 and relative_path.name in _STANDARD_DOC_NAMES
+
+
 def _summary(path: Path, root: Path) -> GeneratedDocumentSummary:
     relative_path = path.relative_to(root)
     stat = path.stat()
@@ -124,7 +145,9 @@ async def list_generated_documents() -> list[GeneratedDocumentSummary]:
     documents = [
         _summary(path, root)
         for path in root.rglob("*.md")
-        if path.is_file() and not path.name.endswith(".prev.md")
+        if path.is_file()
+        and not path.name.endswith(".prev.md")
+        and _is_standard_doc(path.relative_to(root))
     ]
     return sorted(documents, key=lambda document: document.created_at, reverse=True)
 
@@ -171,7 +194,7 @@ async def get_generated_document(
     )
 
 
-@router.get("/serve/{repo_slug}/{filename}")
+@router.get("/serve/{repo_slug}/{filename:path}")
 async def serve_raw_document(repo_slug: str, filename: str) -> Response:
     """Serve a generated Markdown file as plain text.
 
@@ -179,18 +202,24 @@ async def serve_raw_document(repo_slug: str, filename: str) -> Response:
     (e.g. through ngrok) so that GitBook can import the content using its
     ``POST /spaces/{spaceId}/import`` endpoint which fetches from a URL.
 
+    ``filename`` may contain subdirectories — per-file, on-demand docs
+    (see services/file_doc_service.py) mirror their source path, e.g.
+    ``app/api/webhook.py.md`` — so this accepts a full path segment, not just
+    a single path component.
+
     Example::
 
         GET /api/documents/serve/Karthik7939_Mindstride-test-repo-v1/README.md
+        GET /api/documents/serve/Karthik7939_Mindstride-test-repo-v1/app/api/webhook.py.md
 
     Args:
         repo_slug: The folder name under generated_docs/ (underscored form).
-        filename: The markdown filename, e.g. ``README.md``.
+        filename: The markdown file's path relative to the repo's doc folder.
     """
     root = _documents_root()
 
     # Sanitise inputs — no path traversal
-    if "/" in repo_slug or ".." in repo_slug or ".." in filename:
+    if "/" in repo_slug or ".." in repo_slug or ".." in Path(filename).parts:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
     if not filename.lower().endswith(".md"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .md files are served")

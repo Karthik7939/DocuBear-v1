@@ -1,0 +1,8 @@
+{
+  "timestamp": null,
+  "is_dry_run": true,
+  "WARNING": "ILLUSTRATIVE — NOT REAL DATA. All metric values in this dry-run output are hardcoded placeholders for pipeline verification only. Do NOT use these numbers in a research paper.",
+  "repository_count": 0,
+  "total_experiments": 0,
+  "results": []
+}

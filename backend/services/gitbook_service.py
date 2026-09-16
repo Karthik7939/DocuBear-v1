@@ -278,16 +278,27 @@ class GitBookService:
                 "message": f"Failed importing {filename}: {str(exc)}",
             }
 
-    def publish_repository_docs(
+    # Whole-repo Coordinator pipeline output — see documentation_agent.py.
+    STANDARD_DOC_FILES = ["README.md", "ARCHITECTURE.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md", "REPORTS.md"]
+
+    def publish_documents(
         self,
         repo_name: str,
         space_id: str,
         public_base_url: str,
+        filenames: List[str],
         token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Publish all standard documentation files for a repository to GitBook
-        by having GitBook import each file from a public URL.
+        Publish a chosen set of generated documentation files for a repository
+        to GitBook by having GitBook import each file from a public URL.
+
+        Unlike ``publish_repository_docs`` (which always publishes the fixed
+        standard suite), this accepts any file path under the repo's
+        generated_docs/<repo_slug>/ folder — including per-file, on-demand
+        docs written by FileDocumentationService, which live at nested paths
+        mirroring their source file (e.g. ``app/api/webhook.py.md``) — so the
+        frontend can let the user pick exactly which documents to publish.
 
         Uses GitBook OpenAPI-spec endpoint:
           POST /org/{organizationId}/imports
@@ -300,6 +311,8 @@ class GitBookService:
             space_id: GitBook Space ID or full GitBook URL (org + space extracted automatically).
             public_base_url: Publicly-reachable base URL of this backend,
                 e.g. ``https://abc123.ngrok-free.app`` (no trailing slash).
+            filenames: Paths relative to generated_docs/<repo_slug>/ to publish,
+                e.g. ``["README.md", "app/api/webhook.py.md"]``.
             token: Optional API token override.
 
         Returns:
@@ -335,11 +348,15 @@ class GitBookService:
                 "published_count": 0,
             }
 
-        repo_slug = repo_name.replace("/", "_")
-        repo_out_dir = _OUTPUT_ROOT / repo_slug
+        if not filenames:
+            return {
+                "success": False,
+                "message": "No documents were selected to publish.",
+                "published_count": 0,
+            }
 
-        target_files = ["README.md", "ARCHITECTURE.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md", "REPORTS.md"]
-        published_results: List[Dict[str, Any]] = []
+        repo_slug = repo_name.replace("/", "_")
+        repo_out_dir = (_OUTPUT_ROOT / repo_slug).resolve()
 
         if not repo_out_dir.exists():
             return {
@@ -348,25 +365,30 @@ class GitBookService:
                 "published_count": 0,
             }
 
-        for filename in target_files:
-            file_path = repo_out_dir / filename
-            if file_path.exists() and file_path.is_file():
-                file_url = f"{public_base_url}/api/documents/serve/{repo_slug}/{filename}"
-                logger.info("Publishing %s via URL import: %s", filename, file_url)
-                result = self.publish_document_from_url(
-                    space_id=clean_space_id,
-                    org_id=org_id,
-                    filename=filename,
-                    file_url=file_url,
-                    token=token,
-                )
-                published_results.append(result)
-            else:
+        published_results: List[Dict[str, Any]] = []
+
+        for raw_filename in filenames:
+            filename = raw_filename.replace("\\", "/").lstrip("/")
+            file_path = (repo_out_dir / filename).resolve()
+
+            if repo_out_dir not in file_path.parents or not file_path.is_file():
                 published_results.append({
                     "success": False,
                     "filename": filename,
                     "message": "File not found on disk — generate documentation first.",
                 })
+                continue
+
+            file_url = f"{public_base_url}/api/documents/serve/{repo_slug}/{filename}"
+            logger.info("Publishing %s via URL import: %s", filename, file_url)
+            result = self.publish_document_from_url(
+                space_id=clean_space_id,
+                org_id=org_id,
+                filename=filename,
+                file_url=file_url,
+                token=token,
+            )
+            published_results.append(result)
 
         success_count = sum(1 for r in published_results if r.get("success"))
 
@@ -375,8 +397,26 @@ class GitBookService:
             "repository": repo_name,
             "space_id": clean_space_id,
             "published_count": success_count,
-            "total_files": len(target_files),
+            "total_files": len(filenames),
             "results": published_results,
-            "message": f"Published {success_count}/{len(target_files)} standard documentation files to GitBook Space '{clean_space_id}'.",
+            "message": f"Published {success_count}/{len(filenames)} selected documentation file(s) to GitBook Space '{clean_space_id}'.",
         }
+
+    def publish_repository_docs(
+        self,
+        repo_name: str,
+        space_id: str,
+        public_base_url: str,
+        token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Publish the fixed standard documentation suite (README, ARCHITECTURE,
+        WORKFLOW, CHANGELOG, SECURITY, REPORTS) — kept for backward compatibility
+        with callers that don't pass an explicit file selection."""
+        return self.publish_documents(
+            repo_name=repo_name,
+            space_id=space_id,
+            public_base_url=public_base_url,
+            filenames=self.STANDARD_DOC_FILES,
+            token=token,
+        )
 
