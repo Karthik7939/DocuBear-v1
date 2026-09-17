@@ -27,21 +27,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from agents.documentation.context_slicer import ContextSlicer
 from agents.documentation.planner_agent import IGNORED_FOLDER_NAMES
-from app.core.config import settings
 from prompts.chat_prompt import CHAT_ANSWER_PROMPT
+from services.doc_context_service import load_generated_docs, retrieve_code_context
 from services.git_service import GitService
 from services.repository_service import RepositoryService
 
 logger = logging.getLogger(__name__)
 
 _MAX_FILE_PREVIEW_CHARS = 6_000
-_MAX_DOC_CHARS_EACH = 2_500
-_DOC_FILENAMES = [
-    "README.md", "ARCHITECTURE.md", "WORKFLOW.md",
-    "SECURITY.md", "REPORTS.md", "CHANGELOG.md",
-]
 
 # Backtick-quoted token wins outright (`app/page.tsx`); otherwise fall back
 # to any bare word containing a dotted extension.
@@ -92,7 +86,6 @@ class ChatService:
         self._repos = repository_service
         self._git = git_service
         self._llm = llm_client
-        self._slicer = ContextSlicer()
 
     # ------------------------------------------------------------------
     # Public API
@@ -259,8 +252,8 @@ class ChatService:
         question: str,
         history: list[ChatMessage],
     ) -> ChatAnswer:
-        doc_context, doc_sources = self._load_generated_docs(repository_name)
-        code_context = self._retrieve_code_context(repository_name, question)
+        doc_context, doc_sources = load_generated_docs(repository_name)
+        code_context = retrieve_code_context(repository_name, question)
 
         history_block = ""
         if history:
@@ -282,45 +275,3 @@ class ChatService:
             answer = "I couldn't generate an answer right now — the LLM call failed. Please try again."
 
         return ChatAnswer(answer=answer.strip(), intent="general", sources=doc_sources)
-
-    # ------------------------------------------------------------------
-    # Context loading
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _load_generated_docs(repository_name: str) -> tuple[str, list[str]]:
-        slug = repository_name.replace("/", "_")
-        repo_docs_dir = settings.generated_docs_path_dir / slug
-
-        blocks: list[str] = []
-        sources: list[str] = []
-        for filename in _DOC_FILENAMES:
-            doc_path = repo_docs_dir / filename
-            if not doc_path.is_file():
-                continue
-            try:
-                content = doc_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            blocks.append(f"### {filename}\n{content[:_MAX_DOC_CHARS_EACH]}")
-            sources.append(filename)
-
-        return "\n\n".join(blocks), sources
-
-    def _retrieve_code_context(self, repository_name: str, question: str) -> str:
-        try:
-            from rag.pipeline.retrieval_pipeline import RetrievalPipeline
-            from rag.schemas.query import SemanticQuery
-
-            query = SemanticQuery(
-                repository=repository_name,
-                commit_sha="HEAD",
-                query_text=question,
-                top_k=8,
-            )
-            pipeline = RetrievalPipeline(repository=repository_name)
-            context_package = pipeline.retrieve(query)
-            return self._slicer.get_global_context(context_package)
-        except Exception as exc:
-            logger.warning("chat: code RAG retrieval failed/unavailable: %s", exc)
-            return ""

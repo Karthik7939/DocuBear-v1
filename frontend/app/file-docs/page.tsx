@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import FileTreePanel, { FileTreeNode } from "@/components/FileTreePanel";
 import DocPreview from "@/components/DocPreview";
 import ApprovalActions from "@/components/ApprovalActions";
-import DocChatWidget from "@/components/DocChatWidget";
 import { DiffSummary } from "@/components/DiffViewer";
 import { AnimatedContainer, AnimatedItem } from "@/components/AnimatedItem";
 import { Repo, FileDocVersion, FileDocSummary } from "@/types";
+import { useRegisterOpenDocument } from "@/lib/agentContext";
 
 const REPO_STORAGE_KEY = "docubear_filedocs_repo";
 
@@ -166,8 +166,37 @@ export default function FileDocsPage() {
     }
   };
 
+  const handleAssistantChange = (newContent: string, previousContent: string) => {
+    setDoc((prev) =>
+      prev
+        ? {
+            ...prev,
+            content: newContent,
+            previousContent,
+            hasChanges: true,
+            status: "changes_requested",
+          }
+        : prev
+    );
+  };
+
   const fileName = doc?.title.split("/").at(-1) || "";
   const repositoryName = selectedRepo;
+
+  // Tell the persistent, layout-level AgentSidebar which document is open —
+  // it lives outside this page so it survives navigation instead of being
+  // torn down and rebuilt every time.
+  useRegisterOpenDocument(
+    repositoryName
+      ? {
+          repositoryName,
+          documentId: doc?.id,
+          documentTitle: fileName || undefined,
+          documentContent: doc?.content,
+          onDocumentChanged: handleAssistantChange,
+        }
+      : null
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -395,8 +424,6 @@ export default function FileDocsPage() {
           </div>
         </AnimatedItem>
       )}
-
-      {repositoryName && <DocChatWidget repositoryName={repositoryName} />}
     </div>
   );
 }

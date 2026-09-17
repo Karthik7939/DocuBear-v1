@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import PageTransition from "@/components/PageTransition";
+import AppContent from "@/components/AppContent";
+import AgentSidebar from "@/components/AgentSidebar";
+import { AgentProvider } from "@/lib/agentContext";
 
 export const metadata: Metadata = {
   title: "DocuBear",
@@ -16,10 +19,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        <main className="w-full px-6 py-6 sm:px-10 lg:px-12">
-          <PageTransition>{children}</PageTransition>
-        </main>
+        <AgentProvider>
+          <Navbar />
+          <AppContent>
+            <PageTransition>{children}</PageTransition>
+          </AppContent>
+          <AgentSidebar />
+        </AgentProvider>
       </body>
     </html>
   );

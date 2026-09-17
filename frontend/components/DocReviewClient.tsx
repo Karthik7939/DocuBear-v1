@@ -3,10 +3,10 @@
 import { useState } from "react";
 import DocPreview from "@/components/DocPreview";
 import ApprovalActions from "@/components/ApprovalActions";
-import DocChatWidget from "@/components/DocChatWidget";
 import { DiffSummary } from "@/components/DiffViewer";
 import { DocVersion } from "@/types";
 import { AnimatedContainer, AnimatedItem } from "@/components/AnimatedItem";
+import { useRegisterOpenDocument } from "@/lib/agentContext";
 
 export default function DocReviewClient({ initialDoc }: { initialDoc: DocVersion }) {
   const [doc, setDoc] = useState<DocVersion>(initialDoc);
@@ -43,12 +43,33 @@ export default function DocReviewClient({ initialDoc }: { initialDoc: DocVersion
     }
   };
 
+  const handleAssistantChange = (newContent: string, previousContent: string) => {
+    setDoc((prev) => ({
+      ...prev,
+      content: newContent,
+      previousContent,
+      hasChanges: true,
+      status: "changes_requested",
+    }));
+  };
+
   const fileName = doc.title.split("/").at(-1) || doc.title;
   const folderPath = doc.title.split("/").slice(0, -1).join("/") || "root";
 
   // doc.repoId is the underscored slug used on disk (e.g. "Owner_repo-name");
   // the chat backend expects the "owner/repo" form, same as GitHub's full_name.
   const repositoryName = doc.repoId.replace("_", "/");
+
+  // Tell the persistent, layout-level AgentSidebar which document is open —
+  // it lives outside this page so it survives navigation instead of being
+  // torn down and rebuilt every time.
+  useRegisterOpenDocument({
+    repositoryName,
+    documentId: doc.id,
+    documentTitle: fileName,
+    documentContent: doc.content,
+    onDocumentChanged: handleAssistantChange,
+  });
 
   return (
     <>
@@ -125,7 +146,6 @@ export default function DocReviewClient({ initialDoc }: { initialDoc: DocVersion
         />
       </AnimatedItem>
       </AnimatedContainer>
-      <DocChatWidget repositoryName={repositoryName} />
     </>
   );
 }

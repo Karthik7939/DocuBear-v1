@@ -11,7 +11,7 @@ Responsibilities:
 
 from fastapi import APIRouter
 
-from app.api import chat, debug, documents, files, gitbook, health, metrics, rag, webhook
+from app.api import chat, debug, documents, files, gitbook, health, metrics, rag, voice_chat, webhook
 
 # Main router that is registered on the FastAPI app in main.py
 api_router = APIRouter()
@@ -42,3 +42,6 @@ api_router.include_router(metrics.router, prefix="/api/metrics", tags=["Metrics"
 
 # On-demand single-file documentation — endpoints at /api/files/tree and /api/files/generate-doc
 api_router.include_router(files.router, prefix="/api/files", tags=["Files"])
+
+# Voice assistant — WebSocket endpoint at /api/voice-chat
+api_router.include_router(voice_chat.router, prefix="/api/voice-chat", tags=["Voice"])

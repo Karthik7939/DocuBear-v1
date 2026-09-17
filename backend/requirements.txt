@@ -38,6 +38,11 @@ langchain-google-genai>=2.0.0
 google-generativeai>=0.8.0
 langgraph>=0.2.0
 
+# Gemini Live API (real-time voice) -- separate SDK from google-generativeai
+# above; used only by services/voice_session_service.py for the documentation
+# chatbot's voice assistant feature.
+google-genai>=2.19.0
+
 # ---------------------------------------------------------------------------
 # RAG dependencies
 # ---------------------------------------------------------------------------

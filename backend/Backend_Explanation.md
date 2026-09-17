@@ -4,6 +4,8 @@
 > It covers: server entry point, configuration, API endpoints, service layer,
 > workflow engine, utilities, and data models.
 > For the AI agent pipeline, see `agent_explanation.md`.
+> For the documentation chatbot and voice assistant, see
+> `../CHATBOT_AND_VOICE_ASSISTANT.md`.
 
 ---
 
@@ -17,6 +19,9 @@ backend/
 │   ├── api/
 │   │   ├── router.py            ← Registers all API routes in one place
 │   │   ├── webhook.py           ← POST /webhook/github  ← main endpoint
+│   │   ├── chat.py              ← POST /api/chat -- read-only documentation chatbot
+│   │   ├── voice_chat.py        ← WS /api/voice-chat -- voice/agentic assistant
+│   │   ├── files.py             ← On-demand single-file documentation endpoints
 │   │   └── health.py            ← GET  /health
 │   ├── core/
 │   │   ├── config.py            ← Reads .env once and shares it everywhere
@@ -43,7 +48,13 @@ backend/
 │   ├── llm_service.py           ← LangChain-backed LLM (Groq / Gemini / OpenAI)
 │   ├── parser_service.py        ← Extracts file lists and author from payload
 │   ├── repository_service.py    ← Manages the repositories/ folder
-│   └── workflow_service.py      ← Saves/loads workflow state to/from disk
+│   ├── workflow_service.py      ← Saves/loads workflow state to/from disk
+│   ├── chat_service.py          ← Documentation chatbot (see §12)
+│   ├── doc_context_service.py   ← Shared doc/RAG context loader (see §12)
+│   ├── document_store_service.py← Shared safe-write path (backup + overwrite) (see §12)
+│   ├── file_doc_service.py      ← On-demand single-file documentation
+│   ├── voice_session_service.py ← Gemini Live session lifecycle (see §12)
+│   └── voice_tool_harness.py    ← Propose/apply-change tools + approval gate (see §12)
 │
 ├── rag/                          ← Full RAG engine (chunking, embeddings,
 │                                    retrieval, indexing) — see §7 below
@@ -538,6 +549,37 @@ Run all tests with:
 ```bash
 pytest tests/ -v
 ```
+
+---
+
+## 12. Documentation Chatbot & Voice Assistant
+
+**Status: fully built.** Two related but distinct capabilities, both
+surfaced as one collapsible sidebar in the frontend:
+
+- **`chat_service.py`** + `app/api/chat.py` (`POST /api/chat`) — a
+  read-only chatbot. Regex-classifies each question into `file_history`
+  (answered from git log), `file_content` (answered from the raw file), or
+  `general` (answered by an LLM call grounded in `doc_context_service`'s
+  repo-wide doc + RAG context).
+- **`voice_session_service.py`** + **`voice_tool_harness.py`** +
+  `app/api/voice_chat.py` (`WS /api/voice-chat`) — a Gemini Live
+  (`gemini-3.8-live`) session that can also *edit* the one document
+  currently open in the frontend viewer, but only after the human clicks
+  Approve on a drafted proposal shown in the UI. The approval check is
+  enforced in `voice_tool_harness.py`, not by asking the model nicely —
+  `apply_document_change` is refused with `not_yet_approved` unless a
+  matching `approve_proposal` call already arrived from an explicit UI
+  button click.
+- **`doc_context_service.py`** and **`document_store_service.py`** are
+  small shared modules extracted so the chatbot and the voice assistant
+  read from (and safely write to) documents the same way, instead of two
+  copies of that logic drifting apart.
+
+Full architecture, the WebSocket message protocol, the frontend pieces
+(persistent sidebar, mic capture/playback, modality-aware audio playback),
+and the issues found while building it: see
+**`../CHATBOT_AND_VOICE_ASSISTANT.md`**.
 
 ---
 

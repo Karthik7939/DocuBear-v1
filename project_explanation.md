@@ -6,6 +6,15 @@ It consists of two main components:
 1. **FastAPI + LangGraph Backend**: An AI agent pipeline orchestrated via LangGraph and backed by a hybrid vector-keyword retrieval engine.
 2. **Next.js 16 Frontend**: A dashboard providing human-in-the-loop validation, live knowledge base management, commit history mapping, and GitBook synchronization.
 
+Alongside the push-triggered pipeline above, DocuBear also exposes a
+persistent **documentation chatbot and voice assistant** — a sidebar,
+present on every page, that answers questions grounded in a repository's
+docs and RAG code context, and can draft and (after explicit human
+approval) apply edits to the document currently open in the viewer, by
+text or by voice (Gemini Live). See §7 and
+[CHATBOT_AND_VOICE_ASSISTANT.md](CHATBOT_AND_VOICE_ASSISTANT.md) for the
+full design.
+
 ---
 
 ## 1. System Architecture Overview
@@ -58,6 +67,7 @@ graph TD
 *   **Tree-sitter (0.21.0+)**: Parses codebase files into Abstract Syntax Trees (AST) to enable precise, language-aware syntax chunking (for Python, Java, JavaScript, and TypeScript).
 *   **Rank-BM25 (0.2.2+)**: Runs lexical, keyword-based search to complement semantic vector search.
 *   **Pytest (8.3.4)** & **Pytest-Asyncio**: Powers the asynchronous unit testing suite, mocking Git operations, RAG queries, and LLM completions.
+*   **google-genai (2.19.0+)**: The Gemini Live API SDK powering the voice assistant's real-time, bidirectional audio/text/tool-calling session (`gemini-3.8-live`) — separate from `langchain-google-genai`/`google-generativeai`, which back the plain-text LLM calls elsewhere in the backend.
 
 ### Frontend Technologies (Next.js 16 / React 19)
 *   **Next.js (16.2.11 - App Router)**: Framework for server-rendered page routing, performance, and API route management.
@@ -142,12 +152,17 @@ flowchart TD
 *   [backend/agents/coordinator/coordinator.py](file:///Users/ashlin/Downloads/DocAgent-v1/backend/agents/coordinator/coordinator.py): Wires the `StateGraph` of the 7 LangGraph nodes, managing conditional edges and execution logs.
 *   [backend/rag/pipeline/](file:///Users/ashlin/Downloads/DocAgent-v1/backend/rag/pipeline/): Orchestrates indexing, metadata cache mapping, database writes, and hybrid retrieval.
 *   [backend/services/llm_service.py](file:///Users/ashlin/Downloads/DocAgent-v1/backend/services/llm_service.py): Manages LangChain bindings for model targets, model parameters, API key retrieval, and text generation.
+*   [backend/services/chat_service.py](file:///Users/ashlin/Downloads/DocAgent-v1/backend/services/chat_service.py): Documentation chatbot — intent routing, RAG-grounded Q&A.
+*   [backend/services/voice_session_service.py](file:///Users/ashlin/Downloads/DocAgent-v1/backend/services/voice_session_service.py) & [voice_tool_harness.py](file:///Users/ashlin/Downloads/DocAgent-v1/backend/services/voice_tool_harness.py): Gemini Live session + the propose/approve/apply editing gate. See §7.
+*   [backend/app/api/voice_chat.py](file:///Users/ashlin/Downloads/DocAgent-v1/backend/app/api/voice_chat.py): `WS /api/voice-chat` — the voice/agentic assistant endpoint.
 
 ### Frontend Directory (`frontend/`)
 *   [frontend/app/page.tsx](file:///Users/ashlin/Downloads/DocAgent-v1/frontend/app/page.tsx): Main dashboard displaying KPI summary stats (such as Connected Repos, Tracked Docs, Pending Updates) and dynamic recent document feeds.
 *   [frontend/app/knowledge-base/page.tsx](file:///Users/ashlin/Downloads/DocAgent-v1/frontend/app/knowledge-base/page.tsx): Lists connected codebases, indexes code via vector database API integrations, and displays active chunk totals.
 *   [frontend/app/review/](file:///Users/ashlin/Downloads/DocAgent-v1/frontend/app/review/): Provides visual diff components, layout models, markdown rendering options, and control systems to approve, comment, or modify generated documents.
 *   [frontend/app/gitbook/page.tsx](file:///Users/ashlin/Downloads/DocAgent-v1/frontend/app/gitbook/page.tsx): Manages space identifiers, API tokens, webhook addresses, and synchronizes finalized documentation to GitBook.
+*   [frontend/components/AgentSidebar.tsx](file:///Users/ashlin/Downloads/DocAgent-v1/frontend/components/AgentSidebar.tsx): The persistent chatbot/voice assistant sidebar, mounted once in the root layout. See §7.
+*   [frontend/lib/agentContext.tsx](file:///Users/ashlin/Downloads/DocAgent-v1/frontend/lib/agentContext.tsx): Shared context letting any page tell the sidebar which document is open, without the sidebar living inside the page tree.
 
 ---
 
@@ -160,3 +175,55 @@ DocuBear demonstrates several key concepts currently explored in Software Engine
 3.  **Hybrid RAG Retrieval Fusion**: By combining semantic embeddings (capturing intent and structural associations) with BM25 lexical keyword matching (capturing precise syntactic definitions, like function names), the system ensures high retrieval recall.
 4.  **AST-Aware Chunking**: Traditional RAG systems slice documents at arbitrary character intervals, which splits code blocks in half. Chunking code via Abstract Syntax Tree (AST) node parsing ensures that functions and classes remain syntactically complete.
 5.  **Incremental Vector Space Maintenance**: Updating a vector database on every commit is computationally expensive. DocuBear addresses this by executing delta-based incremental updates: calculating git diff changes and only rebuilding indices for updated or new source files.
+
+---
+
+## 7. Documentation Chatbot & Voice Assistant
+
+Separate from the push-triggered pipeline above, a persistent sidebar
+(mounted once in the frontend's root layout, so it survives page
+navigation) provides two related capabilities:
+
+*   **Read-only chat** (`POST /api/chat` → `ChatService`): answers questions
+    grounded in a repository's generated docs and RAG-retrieved code
+    context.
+*   **Voice / agentic assistant** (`WS /api/voice-chat` → `VoiceSessionService`
+    + Gemini's Live API, model `gemini-3.8-live`): the same grounded Q&A,
+    plus the ability to draft an edit to the one document currently open in
+    the viewer and apply it — but only after the human clicks **Approve** on
+    the proposed diff. The approval check is enforced server-side
+    (`voice_tool_harness.py`): the `apply_document_change` tool is refused
+    with `not_yet_approved` unless a matching approval already arrived from
+    an explicit UI click, regardless of what the user said out loud or
+    typed.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant S as AgentSidebar (frontend)
+    participant W as /api/voice-chat (WebSocket)
+    participant G as Gemini Live (gemini-3.8-live)
+
+    U->>S: "Remove '(App Router)' from the Frontend Layer line"
+    S->>W: user_text
+    W->>G: send_client_content
+    G-->>W: tool_call: propose_document_change
+    W-->>S: proposal (summary, diff)
+    S-->>U: Renders ProposalCard with Approve/Reject
+    U->>S: Click Approve
+    S->>W: approve_proposal
+    W->>G: (nudge: approval granted)
+    G-->>W: tool_call: apply_document_change
+    W-->>W: backup_and_write() -- .prev.md + new content
+    W-->>S: proposal_applied (new_content)
+    S-->>U: DocPreview updates live, no reload
+```
+
+A typed question gets a text-only reply; a spoken one gets text *and*
+speech — Gemini streams both modalities for every turn regardless of input
+type, so this is decided client-side (the sidebar only plays back audio
+chunks for turns that started as a spoken push-to-talk input).
+
+Full architecture, the WebSocket protocol, and the frontend audio pipeline
+(AudioWorklet-based mic capture at 16kHz, playback at 24kHz, push-to-talk):
+see [CHATBOT_AND_VOICE_ASSISTANT.md](CHATBOT_AND_VOICE_ASSISTANT.md).
