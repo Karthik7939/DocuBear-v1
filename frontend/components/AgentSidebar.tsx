@@ -116,6 +116,7 @@ export default function AgentSidebar() {
   const [sessionActive, setSessionActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [micHeld, setMicHeld] = useState(false);
+  const [assistantSpeaking, setAssistantSpeaking] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<VoiceChatClient | null>(null);
@@ -128,6 +129,11 @@ export default function AgentSidebar() {
   // voice in -> text + spoken reply), independent of the fact that Gemini
   // always streams both back.
   const lastInputModeRef = useRef<"text" | "voice">("text");
+  // Set by the Stop button so any remaining chunks for the turn already in
+  // flight are dropped instead of played -- reset whenever a new turn
+  // starts (Gemini keeps streaming the rest of the reply after a manual
+  // stop; we just stop listening to its audio).
+  const suppressAudioRef = useRef(false);
   // "repo::docId" of the document the current/pending session is scoped to,
   // so a change can be told apart from a first connect.
   const connectedKeyRef = useRef<string | null>(null);
@@ -174,9 +180,11 @@ export default function AgentSidebar() {
     clientRef.current = null;
     streamingAssistantIdRef.current = null;
     streamingUserIdRef.current = null;
+    suppressAudioRef.current = false;
     setSessionActive(false);
     setConnecting(false);
     setMicHeld(false);
+    setAssistantSpeaking(false);
   }, []);
 
   const handleVoiceEvent = useCallback(
@@ -218,9 +226,12 @@ export default function AgentSidebar() {
         case "assistant_audio_chunk": {
           // Gemini always streams audio back; only actually play it when the
           // triggering turn was spoken, so a typed question gets a text-only
-          // reply and a spoken one gets voice + text.
-          if (lastInputModeRef.current === "voice") {
+          // reply and a spoken one gets voice + text. suppressAudioRef lets
+          // the Stop button silence the rest of an in-flight reply even
+          // though Gemini keeps streaming chunks until the turn ends.
+          if (lastInputModeRef.current === "voice" && !suppressAudioRef.current) {
             playerRef.current?.enqueuePcm16(event.data);
+            setAssistantSpeaking(true);
           }
           break;
         }
@@ -228,6 +239,7 @@ export default function AgentSidebar() {
           streamingAssistantIdRef.current = null;
           streamingUserIdRef.current = null;
           setSessionItems((prev) => prev.map((it) => (it.kind === "text" ? { ...it, streaming: false } : it)));
+          setAssistantSpeaking(false);
           break;
         }
         case "proposal": {
@@ -292,6 +304,16 @@ export default function AgentSidebar() {
     appendSessionItem({ kind: "system", id: nextId(), content: "You ended the assistant session." });
   }, [endSession, appendSessionItem]);
 
+  // Interrupts the assistant's speech without ending the session -- Gemini
+  // keeps streaming audio for the reply already in flight, so this both
+  // silences what's queued/playing right now and drops any further chunks
+  // until the next turn starts.
+  const handleStopAudio = useCallback(() => {
+    playerRef.current?.stopAndClear();
+    suppressAudioRef.current = true;
+    setAssistantSpeaking(false);
+  }, []);
+
   // Auto-connect the tool-enabled session whenever a document is open and
   // the panel is visible, and silently re-scope it (no user-visible churn)
   // if the open document changes -- e.g. navigating to a different page or
@@ -323,6 +345,8 @@ export default function AgentSidebar() {
     setMicHeld(true);
     lastInputModeRef.current = "voice";
     playerRef.current?.stopAndClear(); // barge-in: stop assistant audio if it's still playing
+    suppressAudioRef.current = false; // this new turn's reply should still be heard
+    setAssistantSpeaking(false);
     clientRef.current.startAudioTurn();
     const capture = new PcmAudioCapture();
     captureRef.current = capture;
@@ -356,6 +380,7 @@ export default function AgentSidebar() {
     setInput("");
     setError(null);
     lastInputModeRef.current = "text";
+    suppressAudioRef.current = false;
 
     if (documentId && repositoryName) {
       if (!clientRef.current) {
@@ -591,6 +616,24 @@ export default function AgentSidebar() {
               <div className="mb-2 flex items-center justify-center gap-2 rounded-full bg-rose-50 border border-rose-200 py-1.5 text-rose-700">
                 <SpeakingDots />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Listening...</span>
+              </div>
+            )}
+            {!micHeld && assistantSpeaking && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-full bg-teal/10 border border-teal/30 py-1.5 pl-3.5 pr-1.5 text-teal">
+                <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                  <SpeakingDots />
+                  Assistant speaking...
+                </span>
+                <button
+                  onClick={handleStopAudio}
+                  className="flex items-center gap-1 rounded-full bg-teal text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 hover:bg-teal/80 transition-colors"
+                  aria-label="Stop audio"
+                >
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                  </svg>
+                  Stop
+                </button>
               </div>
             )}
             <div className="flex items-end gap-2">
