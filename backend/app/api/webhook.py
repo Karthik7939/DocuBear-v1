@@ -79,6 +79,21 @@ def _run_pipeline(github_service: GitHubService, payload: WebhookPayload) -> Non
     ),
     tags=["Webhook"],
 )
+@router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+@router.post(
+    "/api/webhook/github",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+@router.post(
+    "/api/v1/webhook/github",
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
 async def receive_github_webhook(
     request: Request,
     x_github_event: str = Header(..., alias="x-github-event"),
@@ -163,7 +178,7 @@ async def receive_github_webhook(
     # 5. Fire-and-forget — run the blocking pipeline in a thread pool.
     #    GitHub receives 202 immediately (well within the 10-second limit).
     # ------------------------------------------------------------------ #
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     loop.run_in_executor(_pipeline_executor, _run_pipeline, github_service, payload)
 
     logger.info(

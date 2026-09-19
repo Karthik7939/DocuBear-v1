@@ -170,7 +170,7 @@ class GitHubService:
              # Step 4 – Sync repository (clone or pull)
              logger.info("Syncing repository: %s", local_path)
              self._git_service.sync_repository(
-                 clone_url=payload.repository.clone_url,
+                 clone_url=payload.repository.git_clone_url,
                  local_path=local_path,
              )
 
