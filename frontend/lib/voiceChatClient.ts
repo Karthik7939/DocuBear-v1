@@ -5,7 +5,7 @@
  * (backend/app/api/voice_chat.py). Owned by AgentSidebar; connects directly
  * to the FastAPI backend (not proxied through a Next.js API route, since
  * Next's route handlers don't support persistent WebSocket proxying) --
- * same direct-to-backend precedent already used by app/gitbook/page.tsx.
+ * same direct-to-backend precedent already used by app/publish/page.tsx.
  *
  * See the voice-assistant plan's "WebSocket protocol" section for the exact
  * message shapes this mirrors.

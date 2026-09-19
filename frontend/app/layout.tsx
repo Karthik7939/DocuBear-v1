@@ -3,7 +3,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import PageTransition from "@/components/PageTransition";
 import AppContent from "@/components/AppContent";
-import AgentSidebar from "@/components/AgentSidebar";
+import AgentSidebarGate from "@/components/AgentSidebarGate";
 import { AgentProvider } from "@/lib/agentContext";
 
 export const metadata: Metadata = {
@@ -24,7 +24,7 @@ export default function RootLayout({
           <AppContent>
             <PageTransition>{children}</PageTransition>
           </AppContent>
-          <AgentSidebar />
+          <AgentSidebarGate />
         </AgentProvider>
       </body>
     </html>

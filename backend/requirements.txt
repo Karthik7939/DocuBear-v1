@@ -81,3 +81,19 @@ pinecone>=3.0.0
 # Evaluation scripts (scripts/compute_validation_stats.py, etc.)
 # ---------------------------------------------------------------------------
 pandas>=2.0.0
+
+# ---------------------------------------------------------------------------
+# PDF export (Publish page's "Export" section)
+# ---------------------------------------------------------------------------
+# Markdown -> HTML -> PDF pipeline. xhtml2pdf is pure-Python (no native
+# GTK/Pango/Cairo toolchain like WeasyPrint needs), so it installs cleanly
+# on Windows without extra system dependencies.
+markdown>=3.6
+xhtml2pdf>=0.2.16
+# pymdownx.superfences: the base `markdown` package's fenced_code extension
+# mishandles code fences indented inside list items (common in LLM-generated
+# docs, e.g. "1. Do X:\n   ```bash\n   ...\n   ```") -- it falls back to a
+# garbled inline <code> span with the language tag leaking into the visible
+# text and line breaks collapsed. superfences handles nested/indented fences
+# correctly.
+pymdown-extensions>=10.0

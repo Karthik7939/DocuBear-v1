@@ -251,6 +251,17 @@ export default function AgentSidebar() {
     setAssistantSpeaking(false);
   }, []);
 
+  // AgentSidebarGate only mounts this component on the pages the assistant
+  // is scoped to, so (unlike when it was always mounted app-wide) leaving
+  // those pages now actually unmounts it -- make sure that releases any
+  // live session/mic instead of leaving them running unseen.
+  useEffect(() => {
+    return () => {
+      endSession();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleVoiceEvent = useCallback(
     (event: VoiceEvent) => {
       switch (event.type) {

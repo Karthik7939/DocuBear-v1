@@ -15,7 +15,7 @@ export default function Navbar() {
     { name: "Documentation", href: "/review" },
     { name: "File Docs", href: "/file-docs" },
     { name: "Analytics", href: "/analytics" },
-    { name: "GitBook", href: "/gitbook" },
+    { name: "Publish", href: "/publish" },
     { name: "Knowledge Base", href: "/knowledge-base" },
   ];
 
@@ -81,13 +81,13 @@ export default function Navbar() {
         {/* Right actions */}
         <div className="flex items-center gap-3">
           {/* System status pill (hidden on small mobile) */}
-          <div className="hidden sm:flex items-center gap-2 rounded-full border border-text/30 px-4 py-2 text-xs sm:text-sm font-medium text-text/80 hover:border-text/60 transition-colors">
+          {/* <div className="hidden sm:flex items-center gap-2 rounded-full border border-text/30 px-4 py-2 text-xs sm:text-sm font-medium text-text/80 hover:border-text/60 transition-colors">
             <span className="relative flex h-2.5 w-2.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
             </span>
             Agent Active
-          </div>
+          </div> */}
 
           {/* Primary CTA pill with motion scale */}
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
