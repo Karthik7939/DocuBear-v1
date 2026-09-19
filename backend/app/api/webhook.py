@@ -132,7 +132,17 @@ async def receive_github_webhook(
         )
 
     # ------------------------------------------------------------------ #
-    # 4. Parse and validate the payload
+    # 4. Handle GitHub ping event
+    # ------------------------------------------------------------------ #
+    if x_github_event == GitHubEvent.PING or x_github_event == "ping":
+        logger.info("GitHub ping event received — returning 200 Pong")
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": "ok", "message": "Pong! Webhook connected successfully"},
+        )
+
+    # ------------------------------------------------------------------ #
+    # 5. Parse and validate the payload
     # ------------------------------------------------------------------ #
     try:
         payload = WebhookPayload.model_validate_json(raw_body)

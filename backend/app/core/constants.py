@@ -40,7 +40,7 @@ class GitHubEvent(str, Enum):
 
 
 # Events this service will process; all others are rejected with HTTP 400.
-SUPPORTED_GITHUB_EVENTS: frozenset[str] = frozenset({GitHubEvent.PUSH})
+SUPPORTED_GITHUB_EVENTS: frozenset[str] = frozenset({GitHubEvent.PUSH, GitHubEvent.PING})
 
 
 # ---------------------------------------------------------------------------
