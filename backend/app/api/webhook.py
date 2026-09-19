@@ -25,6 +25,7 @@ from app.core.constants import (
     HEADER_GITHUB_EVENT,
     HEADER_GITHUB_SIGNATURE,
     SUPPORTED_GITHUB_EVENTS,
+    GitHubEvent,
     ResponseMessage,
 )
 from app.dependencies import get_github_service
