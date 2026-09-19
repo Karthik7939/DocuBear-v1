@@ -76,9 +76,12 @@ class SymbolExtractor:
         "interface_declaration",
         "struct_item",
         "struct_declaration",
+        "struct_specifier",
+        "union_specifier",
         "trait_item",
         "enum_declaration",
         "enum_item",
+        "enum_specifier",
     }
 
     _FUNCTION_NODES = {
@@ -100,8 +103,11 @@ class SymbolExtractor:
         "interface_declaration",
         "enum_declaration",
         "enum_item",
+        "enum_specifier",
         "struct_item",
         "struct_declaration",
+        "struct_specifier",
+        "union_specifier",
         "trait_item",
     }
 
@@ -125,6 +131,8 @@ class SymbolExtractor:
         "using_directive",
         "package_import",
         "require_call",
+        "preproc_include",
+        "preproc_def",
     }
 
     _CALL_NODES = {
@@ -139,6 +147,7 @@ class SymbolExtractor:
         "for_statement": "iteration",
         "for_in_statement": "iteration",
         "while_statement": "iteration",
+        "do_statement": "iteration",
         "switch_statement": "branch selection",
         "try_statement": "error handling",
         "catch_clause": "error handling",
@@ -541,7 +550,7 @@ class SymbolExtractor:
             return "type"
         if "enum" in node_type:
             return "enum"
-        if "struct" in node_type:
+        if "struct" in node_type or "union" in node_type:
             return "struct"
         if "trait" in node_type:
             return "trait"
@@ -563,6 +572,10 @@ class SymbolExtractor:
             match.group(1)
             for match in re.finditer(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]", text)
         )
+        imports.extend(
+            match.group(1)
+            for match in re.finditer(r'#include\s+[<"]([^>"]+)[>"]', text)
+        )
 
         if not imports and text.startswith("import "):
             imports.extend(self._parse_python_import_statement(text))
@@ -579,9 +592,16 @@ class SymbolExtractor:
     def _string_literals(self, node, source: str) -> list[str]:
         values: list[str] = []
         for child in self.parser.walk_tree(node):
-            if child.type in {"string", "string_fragment", "interpreted_string_literal"}:
+            if child.type in {
+                "string",
+                "string_fragment",
+                "interpreted_string_literal",
+                "string_literal",
+                "system_lib_string",
+                "header_name",
+            }:
                 text = self.parser.get_node_text(child, source).strip()
-                text = text.strip("\"'`")
+                text = text.strip("\"'<>`")
                 if text:
                     values.append(text)
         return values

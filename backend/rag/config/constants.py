@@ -17,6 +17,7 @@ SUPPORTED_LANGUAGES: dict[str, str] = {
     ".cpp": "cpp",
     ".cc": "cpp",
     ".c": "c",
+    ".h": "c",
     ".cs": "csharp",
     ".go": "go",
     ".rs": "rust",

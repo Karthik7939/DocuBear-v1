@@ -22,6 +22,7 @@ from tree_sitter_typescript import (
     language_tsx,
     language_typescript,
 )
+from tree_sitter_c import language as c_language
 
 from rag.parsing.language_detector import LanguageDetector
 from rag.utils import get_logger
@@ -35,6 +36,7 @@ _LANGUAGE_REGISTRY = {
     "jsx": javascript_language,
     "typescript": language_typescript,
     "tsx": language_tsx,
+    "c": c_language,
 }
 
 

@@ -257,14 +257,15 @@ class DependencyGraphBuilder:
         Build candidate repository paths for an import statement.
         """
         extensions = sorted(SUPPORTED_LANGUAGES.keys())
+        source_dir = Path(source_file).parent
 
         def with_supported_extensions(base: Path | str) -> list[str]:
             base_path = str(base).replace("\\", "/")
-            candidates = [base_path]
             suffix = Path(base_path).suffix
-            if suffix:
-                return candidates
+            if suffix in extensions:
+                return [base_path]
 
+            candidates = [base_path]
             for ext in extensions:
                 candidates.append(f"{base_path}{ext}")
             for ext in extensions:
@@ -272,8 +273,18 @@ class DependencyGraphBuilder:
                 candidates.append(f"{base_path}/__init__{ext}")
             return candidates
 
+        # Handle explicit file paths with known extensions (e.g., C headers #include "utils.h")
+        if Path(module).suffix in extensions:
+            cleaned = module.replace("\\", "/")
+            candidates = []
+            if cleaned.startswith("."):
+                candidates.append(str(source_dir / cleaned).replace("\\", "/"))
+            else:
+                candidates.append(str(source_dir / cleaned).replace("\\", "/"))
+                candidates.append(cleaned)
+            return candidates
+
         if module.startswith("."):
-            source_dir = Path(source_file).parent
             level = 0
             rest = module
 

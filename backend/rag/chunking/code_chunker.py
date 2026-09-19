@@ -68,6 +68,36 @@ _LANGUAGE_CHUNK_NODES: dict[str, dict[str, tuple[str, ...]]] = {
             "generator_function_declaration",
         ),
     },
+    "jsx": {
+        "decorated": (),
+        "class": ("class_declaration",),
+        "function": (
+            "function_declaration",
+            "method_definition",
+            "generator_function_declaration",
+        ),
+    },
+    "tsx": {
+        "decorated": ("decorator",),
+        "class": ("class_declaration",),
+        "function": (
+            "function_declaration",
+            "method_definition",
+            "generator_function_declaration",
+        ),
+    },
+    "c": {
+        "decorated": (),
+        "class": (
+            "struct_specifier",
+            "union_specifier",
+            "enum_specifier",
+            "type_definition",
+        ),
+        "function": (
+            "function_definition",
+        ),
+    },
 }
 
 
@@ -366,6 +396,10 @@ class CodeChunker:
             "class_definition",
             "class_declaration",
             "interface_declaration",
+            "struct_specifier",
+            "union_specifier",
+            "enum_specifier",
+            "type_definition",
         ):
             return (
                 self._node_name(definition, source),
@@ -679,17 +713,47 @@ class CodeChunker:
 
         return node
 
-    @staticmethod
-    def _node_name(node, source: str) -> str:
+    @classmethod
+    def _node_name(cls, node, source: str) -> str:
         """
         Extract a symbol name from a definition node.
         """
         name_node = node.child_by_field_name("name")
 
-        if name_node is None:
-            return "<anonymous>"
+        if name_node is not None:
+            return ASTParser.get_node_text(name_node, source).strip()
 
-        return ASTParser.get_node_text(name_node, source)
+        for field_name in ("declarator", "left", "pattern"):
+            candidate = node.child_by_field_name(field_name)
+            name = cls._first_identifier(candidate, source, deep=True) if candidate else ""
+            if name:
+                return name
+
+        return cls._first_identifier(node, source, deep=False) or "<anonymous>"
+
+    @classmethod
+    def _first_identifier(cls, node, source: str, deep: bool = True) -> str:
+        if node is None:
+            return ""
+
+        if node.type in {
+            "identifier",
+            "property_identifier",
+            "type_identifier",
+            "shorthand_property_identifier",
+            "field_identifier",
+        }:
+            return ASTParser.get_node_text(node, source).strip()
+
+        if not deep:
+            return ""
+
+        for child in node.children:
+            name = cls._first_identifier(child, source, deep=deep)
+            if name:
+                return name
+
+        return ""
 
     @staticmethod
     def _find_parent_class(
