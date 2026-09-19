@@ -142,6 +142,18 @@ class VoiceSessionService:
             tools=TOOLS,
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
+            # The browser already tells us exactly when the user is
+            # recording via explicit activity_start/activity_end signals
+            # (sent from audio_start/audio_end -- see _pump_incoming below),
+            # driven by the mic button being clicked. Without this, Gemini's
+            # own automatic voice-activity detection runs in parallel and
+            # can keep a turn "listening" past our explicit end signal (or
+            # start one on its own), which is what made the assistant seem
+            # to keep listening after a reply instead of waiting for the
+            # next deliberate mic click.
+            realtime_input_config=types.RealtimeInputConfig(
+                automatic_activity_detection=types.AutomaticActivityDetection(disabled=True)
+            ),
         )
 
         async with self._client.aio.live.connect(model=_MODEL, config=config) as session:

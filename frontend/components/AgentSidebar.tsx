@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import MermaidDiagram from "./MermaidDiagram";
@@ -29,7 +29,14 @@ type TranscriptItem =
   | { kind: "system"; id: string; content: string };
 
 const MAX_STORED_TURNS = 40;
-const SIDEBAR_WIDTH = 420;
+const DEFAULT_SIDEBAR_WIDTH = 420;
+const MIN_SIDEBAR_WIDTH = 320;
+const MAX_SIDEBAR_WIDTH = 800;
+const SIDEBAR_WIDTH_STORAGE_KEY = "docubear_sidebar_width";
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width));
+}
 
 function storageKey(repositoryName: string): string {
   return `docubear_chat:${repositoryName}`;
@@ -115,10 +122,13 @@ export default function AgentSidebar() {
 
   const [sessionActive, setSessionActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [micHeld, setMicHeld] = useState(false);
+  const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef(false);
   const clientRef = useRef<VoiceChatClient | null>(null);
   const captureRef = useRef<PcmAudioCapture | null>(null);
   const playerRef = useRef<PcmAudioPlayer | null>(null);
@@ -137,6 +147,11 @@ export default function AgentSidebar() {
   // "repo::docId" of the document the current/pending session is scoped to,
   // so a change can be told apart from a first connect.
   const connectedKeyRef = useRef<string | null>(null);
+  // Resolves/rejects once the backend confirms the Gemini Live session is
+  // actually ready, so a lazily-triggered connect (first mic click or first
+  // typed message) can be awaited instead of racing audio/text against a
+  // socket that's merely open but not yet backed by a live session.
+  const readyWaiterRef = useRef<{ resolve: () => void; reject: (err: Error) => void } | null>(null);
 
   useEffect(() => {
     if (!repositoryName) {
@@ -152,6 +167,55 @@ export default function AgentSidebar() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, sessionItems, loading, sidebarCollapsed]);
+
+  // Restore a previously dragged width once mounted (avoids touching
+  // localStorage during server-side rendering).
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+      const parsed = raw ? Number(raw) : NaN;
+      if (Number.isFinite(parsed)) setSidebarWidth(clampSidebarWidth(parsed));
+    } catch {
+      // Storage unavailable -- default width still works.
+    }
+  }, []);
+
+  // Drag-to-resize: the handle's onMouseDown just arms resizingRef; the
+  // actual width tracking lives on window listeners so dragging keeps
+  // working even if the cursor leaves the narrow handle strip mid-drag.
+  useEffect(() => {
+    function handleMouseMove(e: MouseEvent) {
+      if (!resizingRef.current) return;
+      setSidebarWidth(clampSidebarWidth(window.innerWidth - e.clientX));
+    }
+    function handleMouseUp() {
+      if (!resizingRef.current) return;
+      resizingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setSidebarWidth((width) => {
+        try {
+          window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+        } catch {
+          // Storage unavailable -- resize still works for this session.
+        }
+        return width;
+      });
+    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const handleResizeStart = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
 
   const appendSessionItem = useCallback((item: TranscriptItem) => {
     setSessionItems((prev) => [...prev, item]);
@@ -183,7 +247,7 @@ export default function AgentSidebar() {
     suppressAudioRef.current = false;
     setSessionActive(false);
     setConnecting(false);
-    setMicHeld(false);
+    setIsRecording(false);
     setAssistantSpeaking(false);
   }, []);
 
@@ -193,6 +257,9 @@ export default function AgentSidebar() {
         case "ready": {
           setConnecting(false);
           setSessionActive(true);
+          setHasConnectedOnce(true);
+          readyWaiterRef.current?.resolve();
+          readyWaiterRef.current = null;
           break;
         }
         case "partial_transcript": {
@@ -268,9 +335,13 @@ export default function AgentSidebar() {
         }
         case "error": {
           appendSessionItem({ kind: "system", id: nextId(), content: `⚠️ ${event.message}` });
+          readyWaiterRef.current?.reject(new Error(event.message));
+          readyWaiterRef.current = null;
           break;
         }
         case "closed": {
+          readyWaiterRef.current?.reject(new Error(event.reason || "Connection closed"));
+          readyWaiterRef.current = null;
           endSession();
           break;
         }
@@ -292,10 +363,22 @@ export default function AgentSidebar() {
     try {
       await client.connect({ documentId, repositoryName });
       playerRef.current = new PcmAudioPlayer();
+      // The socket being open doesn't mean the Gemini Live session behind
+      // it is ready yet -- wait for the backend's "ready" event so callers
+      // (first mic click, first typed message) never send into a session
+      // that hasn't actually started.
+      await new Promise<void>((resolve, reject) => {
+        readyWaiterRef.current = { resolve, reject };
+      });
     } catch (err) {
       setConnecting(false);
       setError(err instanceof Error ? err.message : "Could not connect to the assistant.");
+      clientRef.current?.close();
       clientRef.current = null;
+      playerRef.current?.close();
+      playerRef.current = null;
+    } finally {
+      readyWaiterRef.current = null;
     }
   }, [documentId, repositoryName, handleVoiceEvent]);
 
@@ -314,35 +397,50 @@ export default function AgentSidebar() {
     setAssistantSpeaking(false);
   }, []);
 
-  // Auto-connect the tool-enabled session whenever a document is open and
-  // the panel is visible, and silently re-scope it (no user-visible churn)
-  // if the open document changes -- e.g. navigating to a different page or
-  // selecting a different file. The sidebar itself never unmounts, so its
-  // open/closed state and conversation persist across navigation; only the
-  // underlying connection swaps to stay pinned to whichever one document is
-  // now open, since edit scope must always match the viewer.
+  // Nothing connects just because a document is open -- the assistant
+  // (mic capture, and the Gemini Live session backing it) only starts once
+  // the user explicitly acts: clicking the mic button or sending a typed
+  // message. Switching to a different document still tears down and resets
+  // whatever session/conversation was scoped to the previous one, but does
+  // not implicitly start a new one for the document now open.
   useEffect(() => {
     const key = repositoryName && documentId ? `${repositoryName}::${documentId}` : null;
     const switchedDocument = connectedKeyRef.current !== null && connectedKeyRef.current !== key;
     if (switchedDocument) {
       endSession();
+      setHasConnectedOnce(false);
       setSessionItems([]);
     }
     connectedKeyRef.current = key;
-
-    if (!sidebarCollapsed && documentId && repositoryName) {
-      startSession();
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repositoryName, documentId, sidebarCollapsed]);
+  }, [repositoryName, documentId]);
 
   // ------------------------------------------------------------------
-  // Push-to-talk
+  // Voice recording -- click to start, click again (or the Stop control) to
+  // end. Lazily connects the session on first use so nothing runs until the
+  // user actually presses the button.
   // ------------------------------------------------------------------
 
-  const handleMicDown = useCallback(async () => {
-    if (!sessionActive || micHeld || !clientRef.current) return;
-    setMicHeld(true);
+  // Guarded on captureRef (a ref, always current) rather than the isRecording
+  // state, so it's safe to call from anywhere -- including the silence-based
+  // auto-stop callback below, which fires from inside a closure created back
+  // when recording started and can't be relied on to see fresh state.
+  const stopRecording = useCallback(() => {
+    if (!captureRef.current) return;
+    captureRef.current.stop();
+    captureRef.current = null;
+    clientRef.current?.endAudioTurn();
+    setIsRecording(false);
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    if (isRecording || connecting) return;
+    setError(null);
+    if (!clientRef.current) {
+      await startSession();
+    }
+    if (!clientRef.current) return; // connect failed; error already surfaced
+    setIsRecording(true);
     lastInputModeRef.current = "voice";
     playerRef.current?.stopAndClear(); // barge-in: stop assistant audio if it's still playing
     suppressAudioRef.current = false; // this new turn's reply should still be heard
@@ -351,21 +449,25 @@ export default function AgentSidebar() {
     const capture = new PcmAudioCapture();
     captureRef.current = capture;
     try {
-      await capture.start((chunk) => clientRef.current?.sendAudioChunk(chunk));
+      // onAutoStop: ends the turn on its own once the user stops talking, so
+      // one click both starts and (normally) finishes a turn -- listening
+      // stops right there rather than staying on for the rest of the reply.
+      // Clicking the mic button again still ends it immediately by hand.
+      await capture.start((chunk) => clientRef.current?.sendAudioChunk(chunk), () => stopRecording());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Microphone access failed.");
-      setMicHeld(false);
+      setIsRecording(false);
       captureRef.current = null;
     }
-  }, [sessionActive, micHeld]);
+  }, [isRecording, connecting, startSession, stopRecording]);
 
-  const handleMicUp = useCallback(() => {
-    if (!micHeld) return;
-    captureRef.current?.stop();
-    captureRef.current = null;
-    clientRef.current?.endAudioTurn();
-    setMicHeld(false);
-  }, [micHeld]);
+  const handleMicButtonClick = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording]);
 
   // ------------------------------------------------------------------
   // Text input -- routed through the tool-enabled session whenever a
@@ -452,9 +554,19 @@ export default function AgentSidebar() {
       {/* Sidebar panel */}
       {!sidebarCollapsed && (
         <div
-          style={{ width: SIDEBAR_WIDTH }}
-          className="fixed right-0 top-0 z-50 flex h-screen w-full max-w-[420px] flex-col border-l border-border bg-surface shadow-2xl"
+          style={{ width: sidebarWidth }}
+          className="fixed right-0 top-0 z-50 flex h-screen max-w-[95vw] flex-col border-l border-border bg-surface shadow-2xl"
         >
+          {/* Drag handle -- grab anywhere along the left edge to resize. */}
+          <div
+            onMouseDown={handleResizeStart}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize assistant panel"
+            title="Drag to resize"
+            className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none hover:bg-teal/40 active:bg-teal/60 transition-colors"
+          />
+
           {/* Header */}
           <div className="relative flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
             <div className="absolute top-0 left-0 right-0 h-1 bg-presidio-gradient" />
@@ -492,10 +604,11 @@ export default function AgentSidebar() {
             </div>
           </div>
 
-          {/* Assistant session status -- connects automatically once a
-              document is open, so editing/voice tools are always available
-              without a separate "start" step. */}
-          {documentId && (
+          {/* Assistant session status -- only rendered once a connection has
+              actually been requested (by clicking the mic or sending a
+              message), since nothing connects just because a document is
+              open. */}
+          {documentId && (connecting || sessionActive || hasConnectedOnce) && (
             <div className="border-b border-border px-4 py-2 shrink-0">
               {connecting ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted">
@@ -535,7 +648,7 @@ export default function AgentSidebar() {
             {canChat && !hasAnyMessages && (
               <p className="text-xs text-muted leading-relaxed">
                 {documentId
-                  ? "Ask me anything about this repository, or ask for a change to this document — I'll draft it and wait for your approval. Hold the mic button to talk instead of typing."
+                  ? "Ask me anything about this repository, or ask for a change to this document — I'll draft it and wait for your approval. Click the mic button to talk instead of typing, then click it again to finish."
                   : "Ask me anything about this repository. Open a document to also enable editing and voice."}
               </p>
             )}
@@ -611,14 +724,22 @@ export default function AgentSidebar() {
           </div>
 
           {/* Input */}
-          <div className="border-t border-border p-3 shrink-0">
-            {micHeld && (
-              <div className="mb-2 flex items-center justify-center gap-2 rounded-full bg-rose-50 border border-rose-200 py-1.5 text-rose-700">
-                <SpeakingDots />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Listening...</span>
+          <div className="relative border-t border-border p-3 shrink-0">
+            {/* Small floating "live" badge while recording -- just a status
+                indicator, not a button; clicking the mic button again ends
+                the recording. The only "Stop" control in the whole panel is
+                the one below, which silences the assistant's voice reply
+                (text keeps streaming in either case). */}
+            {isRecording && (
+              <div className="absolute -top-8 right-3 flex items-center gap-1.5 rounded-full bg-rose-600 text-white pl-2 pr-2.5 py-1 shadow-lg">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-wider">Listening</span>
               </div>
             )}
-            {!micHeld && assistantSpeaking && (
+            {assistantSpeaking && (
               <div className="mb-2 flex items-center justify-between gap-2 rounded-full bg-teal/10 border border-teal/30 py-1.5 pl-3.5 pr-1.5 text-teal">
                 <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
                   <SpeakingDots />
@@ -649,23 +770,13 @@ export default function AgentSidebar() {
 
               {documentId && (
                 <button
-                  onMouseDown={handleMicDown}
-                  onMouseUp={handleMicUp}
-                  onMouseLeave={handleMicUp}
-                  onTouchStart={(e) => {
-                    e.preventDefault();
-                    handleMicDown();
-                  }}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    handleMicUp();
-                  }}
-                  disabled={!sessionActive}
-                  title={sessionActive ? "Hold to talk" : "Connecting..."}
+                  onClick={handleMicButtonClick}
+                  disabled={connecting && !isRecording}
+                  title={isRecording ? "Click to finish recording" : connecting ? "Connecting..." : "Start recording"}
                   className={`shrink-0 rounded-full p-2.5 transition-all select-none disabled:opacity-40 disabled:cursor-not-allowed ${
-                    micHeld ? "bg-rose-600 text-white animate-pulse" : "bg-text text-white hover:bg-accent"
+                    isRecording ? "bg-rose-600 text-white animate-pulse" : "bg-text text-white hover:bg-accent"
                   }`}
-                  aria-label="Hold to talk"
+                  aria-label={isRecording ? "Finish recording" : "Start recording"}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />

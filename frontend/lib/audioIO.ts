@@ -19,6 +19,15 @@ const PLAYBACK_SAMPLE_RATE = 24000;
 const CAPTURE_WORKLET_URL = "/audio-capture-worklet.js";
 const CAPTURE_WORKLET_NAME = "audio-capture-processor";
 
+// End-of-turn silence detection: once the user has said *something* above
+// SPEECH_RMS_THRESHOLD, a continuous SILENCE_HANG_MS stretch below it is
+// treated as "done talking" and auto-ends the recording -- so a single mic
+// click both starts and (normally) ends a turn, no second click required.
+// Heuristic, not a real VAD; tuned loosely against getUserMedia's own
+// echoCancellation/noiseSuppression already cleaning up the signal.
+const SPEECH_RMS_THRESHOLD = 500;
+const SILENCE_HANG_MS = 1200;
+
 function bufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = "";
@@ -38,13 +47,24 @@ export class PcmAudioCapture {
   private stream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private worklet: AudioWorkletNode | null = null;
+  private hasDetectedSpeech = false;
+  private silenceSinceMs: number | null = null;
 
-  async start(onChunk: (base64Pcm16: string) => void): Promise<void> {
+  /**
+   * @param onAutoStop Called at most once, the moment sustained silence
+   * follows detected speech -- the caller should stop() the capture (and
+   * end the turn) in response. Recording never auto-stops before any
+   * speech has been heard, so pausing to think before talking is safe.
+   */
+  async start(onChunk: (base64Pcm16: string) => void, onAutoStop?: () => void): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     });
     this.ctx = new AudioContext();
     await this.ctx.audioWorklet.addModule(CAPTURE_WORKLET_URL);
+
+    this.hasDetectedSpeech = false;
+    this.silenceSinceMs = null;
 
     this.source = this.ctx.createMediaStreamSource(this.stream);
     this.worklet = new AudioWorkletNode(this.ctx, CAPTURE_WORKLET_NAME, {
@@ -54,12 +74,35 @@ export class PcmAudioCapture {
       },
     });
     this.worklet.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      if (onAutoStop) this._trackSilence(event.data, onAutoStop);
       onChunk(bufferToBase64(event.data));
     };
 
     // Deliberately not connected to ctx.destination -- we don't want to
     // hear our own microphone played back.
     this.source.connect(this.worklet);
+  }
+
+  private _trackSilence(buf: ArrayBuffer, onAutoStop: () => void): void {
+    const samples = new Int16Array(buf);
+    let sumSquares = 0;
+    for (let i = 0; i < samples.length; i++) sumSquares += samples[i] * samples[i];
+    const rms = samples.length ? Math.sqrt(sumSquares / samples.length) : 0;
+
+    if (rms >= SPEECH_RMS_THRESHOLD) {
+      this.hasDetectedSpeech = true;
+      this.silenceSinceMs = null;
+      return;
+    }
+    if (!this.hasDetectedSpeech) return; // still waiting for the user to start talking
+
+    const now = performance.now();
+    if (this.silenceSinceMs === null) {
+      this.silenceSinceMs = now;
+    } else if (now - this.silenceSinceMs >= SILENCE_HANG_MS) {
+      this.silenceSinceMs = null; // one-shot -- stop() tears the worklet down right after
+      onAutoStop();
+    }
   }
 
   stop(): void {
