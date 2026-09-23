@@ -7,15 +7,17 @@ Rules (SRS Part 8, Section 7):
 - Prompts must NOT be embedded inside agent code.
 - Each template uses {placeholder} slots filled by the generator.
 
-Documentation structure (5 files):
+Documentation structure:
   1. README.md          — Project overview, setup, usage, API reference
   2. ARCHITECTURE.md    — System design, components, data flow, dependencies
-  3. WORKFLOW.md        — End-to-end process flowcharts (Mermaid)
-  4. CHANGELOG.md       — Recent commit history and changes (prepend-only)
-  5. SECURITY.md        — Security model, risks, and recommendations
+  3. REQUIREMENTS.md    — Functional and non-functional requirements specification
+  4. WORKFLOW.md        — End-to-end process flowcharts (Mermaid)
+  5. CHANGELOG.md       — Recent commit history and changes (prepend-only)
+  6. SECURITY.md        — Security model, risks, and recommendations
+  7. REPORTS.md         — Deterministic code reports (no LLM call)
 
 Incremental update strategy:
-  - README, ARCHITECTURE, WORKFLOW, SECURITY: LLM receives the existing
+  - README, ARCHITECTURE, REQUIREMENTS, WORKFLOW, SECURITY: LLM receives the existing
     document and updates ONLY the sections affected by the current push.
     All other sections are copied word-for-word to prevent unnecessary
     diff noise.
@@ -210,6 +212,86 @@ Document external services and libraries (e.g., Clerk, Supabase, OpenAI, pywin32
 Bullet list of architecture patterns, security decisions, and trade-offs.
 
 ## Scalability & Limitations
+
+Output Markdown only. No preamble. No explanation.
+"""
+
+
+# ---------------------------------------------------------------------------
+# REQUIREMENTS.md — incremental update
+# ---------------------------------------------------------------------------
+
+REPO_REQUIREMENTS_PROMPT: str = """\
+You are a senior systems engineer and technical documentation specialist.
+Generate or update the formal Requirements Specification (REQUIREMENTS.md) for this project.
+
+CRITICAL RULES:
+- If an existing REQUIREMENTS.md is provided below, copy every section WORD-FOR-WORD
+  EXCEPT sections that are directly affected by the changed files or new features.
+- Only update or add requirement clauses that need revision based on the codebase.
+- Preserve consistent ID numbering (FR-1.1.1, FR-1.1.2, NFR-2.1.1, etc.).
+- STRICT GROUNDING: Do NOT invent features or APIs that are not evidenced by the Code Context or Understanding.
+- Structure the document cleanly with hierarchical headings, clear bulleted requirement IDs, and tables where helpful.
+
+Repository: {repository_name}
+Project Name: {repo_name}
+Architecture Type: {architecture_type}
+
+Files changed in this push:
+{changed_files}
+
+Project Summary:
+{project_summary}
+
+Project Purpose:
+{project_purpose}
+
+Identified Modules:
+{modules}
+
+Identified Services:
+{services}
+
+Identified APIs / Protocols:
+{apis}
+
+Data Flow:
+{data_flow}
+
+=== RETRIEVED CODE CONTEXT ===
+{rag_context}
+=== END CONTEXT ===
+
+=== EXISTING REQUIREMENTS.md (copy unchanged sections exactly) ===
+{existing_content}
+=== END EXISTING REQUIREMENTS.md ===
+
+Output the complete updated REQUIREMENTS.md with exactly these sections:
+
+# Requirements Specification — {repo_name}
+
+## 1. Functional Requirements (FR)
+
+Group requirements by subsystem/feature with structured IDs (e.g. `### 1.1 Connection & Initialization`, `### 1.2 Core Protocol / Business Logic`, `### 1.3 Service & System Management`, `### 1.4 User Interface & Administration`, `### 1.5 Configuration & Persistence`):
+- **FR-1.X.X**: Requirement description with explicit system behavior, protocols, port numbers, or opcodes where applicable.
+
+## 2. Non-Functional Requirements (NFR)
+
+Group into categories:
+### 2.1 Performance & Concurrency
+- **NFR-2.1.X**: Performance expectations, latency, memory limits, thread concurrency.
+
+### 2.2 Reliability & Fault Tolerance
+- **NFR-2.2.X**: Error recovery, retry mechanisms, cleanup on failure.
+
+### 2.3 Security & Access Control
+- **NFR-2.3.X**: Path validation, access limits, authentication/permissions, network isolation.
+
+### 2.4 Compatibility & Standards
+- **NFR-2.4.X**: Supported OS, protocols/RFCs, architecture compatibility (32-bit/64-bit).
+
+## 3. Error Handling & Protocol Codes
+Provide a table or bulleted list of standard error codes, conditions, and system handling actions.
 
 Output Markdown only. No preamble. No explanation.
 """

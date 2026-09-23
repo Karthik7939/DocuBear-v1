@@ -71,7 +71,7 @@ WEIGHT_FAITHFULNESS: float = 0.20
 # static-analysis data (code_reports.py), not LLM-authored, so it can't
 # hallucinate.
 FAITHFULNESS_CHECKED_DOCS: list[str] = [
-    "README.md", "ARCHITECTURE.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md",
+    "README.md", "ARCHITECTURE.md", "REQUIREMENTS.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md",
 ]
 
 # Per-document truncation applied before sending to the faithfulness judge.

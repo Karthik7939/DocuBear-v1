@@ -90,6 +90,7 @@ class DocumentationPlanningAgent:
             repository_docs=[
                 "README.md",
                 "ARCHITECTURE.md",
+                "REQUIREMENTS.md",
                 "WORKFLOW.md",
                 "CHANGELOG.md",
                 "SECURITY.md",

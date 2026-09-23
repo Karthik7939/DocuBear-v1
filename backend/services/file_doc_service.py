@@ -69,6 +69,8 @@ _JS_LIKE_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 _STANDARD_DOC_NAMES = {
     "README.md",
     "ARCHITECTURE.md",
+    "REQUIREMENTS.md",
+    "REQUIREMENT.md",
     "WORKFLOW.md",
     "CHANGELOG.md",
     "SECURITY.md",

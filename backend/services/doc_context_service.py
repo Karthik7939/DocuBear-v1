@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _MAX_DOC_CHARS_EACH = 2_500
 
 DOC_FILENAMES = [
-    "README.md", "ARCHITECTURE.md", "WORKFLOW.md",
+    "README.md", "ARCHITECTURE.md", "REQUIREMENTS.md", "WORKFLOW.md",
     "SECURITY.md", "REPORTS.md", "CHANGELOG.md",
 ]
 

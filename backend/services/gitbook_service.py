@@ -278,8 +278,10 @@ class GitBookService:
                 "message": f"Failed importing {filename}: {str(exc)}",
             }
 
-    # Whole-repo Coordinator pipeline output — see documentation_agent.py.
-    STANDARD_DOC_FILES = ["README.md", "ARCHITECTURE.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md", "REPORTS.md"]
+    STANDARD_DOC_FILES = [
+        "README.md", "ARCHITECTURE.md", "REQUIREMENTS.md", "WORKFLOW.md",
+        "CHANGELOG.md", "SECURITY.md", "REPORTS.md"
+    ]
 
     def publish_documents(
         self,

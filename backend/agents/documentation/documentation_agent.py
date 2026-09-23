@@ -1,18 +1,19 @@
 """
 agents/documentation/documentation_agent.py
 ---------------------------------------------
-Documentation Agent — generates exactly 6 project-wide documentation files:
+Documentation Agent — generates project-wide documentation files:
 
   1. README.md          — Overview, setup, usage, API reference
   2. ARCHITECTURE.md    — System design, components, data flow, dependencies
-  3. WORKFLOW.md         — End-to-end process flowcharts (Mermaid)
-  4. CHANGELOG.md       — Commit history (new entries prepended, old entries preserved)
-  5. SECURITY.md        — Security model, risks, and recommendations
-  6. REPORTS.md         — Circular dependencies + unreferenced components,
+  3. REQUIREMENTS.md    — Functional and non-functional requirements specification
+  4. WORKFLOW.md        — End-to-end process flowcharts (Mermaid)
+  5. CHANGELOG.md       — Commit history (new entries prepended, old entries preserved)
+  6. SECURITY.md        — Security model, risks, and recommendations
+  7. REPORTS.md         — Circular dependencies + unreferenced components,
                            computed deterministically (no LLM call)
 
 Incremental update strategy:
-  - README, ARCHITECTURE, WORKFLOW, SECURITY: the agent reads the existing
+  - README, ARCHITECTURE, REQUIREMENTS, WORKFLOW, SECURITY: the agent reads the existing
     file from disk and passes it to the LLM with instructions to update ONLY
     the sections affected by the current push. Unchanged sections are copied
     word-for-word, minimising diff noise in the frontend review view.
@@ -22,7 +23,7 @@ Incremental update strategy:
     (agents/documentation/code_reports.py) — no incremental merge needed
     since it's a pure function of current state, not narrative text.
 
-All six files are stored in shared_memory.documentation.file_docs with .md
+All generated files are stored in shared_memory.documentation.file_docs with .md
 keys so the SyncAgent writes them as flat files at the repo documentation root.
 """
 
@@ -42,6 +43,7 @@ from agents.documentation.code_reports import render_reports_markdown
 from prompts.documentation_prompt import (
     REPO_OVERVIEW_PROMPT,
     REPO_ARCHITECTURE_PROMPT,
+    REPO_REQUIREMENTS_PROMPT,
     REPO_WORKFLOW_PROMPT,
     CHANGELOG_ENTRY_PROMPT,
     SECURITY_DOC_PROMPT,
@@ -197,7 +199,44 @@ class DocumentationAgent:
         docs.file_docs["ARCHITECTURE.md"] = architecture
 
         # ------------------------------------------------------------------
-        # 3. WORKFLOW.md  — incremental update
+        # 3. REQUIREMENTS.md  — incremental update
+        # ------------------------------------------------------------------
+        existing_req = self._read_existing(repo_out_dir, "REQUIREMENTS.md")
+        req_fallback = (
+            f"# Requirements Specification — {repo_short}\n\n"
+            f"## 1. Functional Requirements (FR)\n\n"
+            f"### 1.1 Core Capabilities\n"
+            f"- **FR-1.1.1**: The system must provide {und.project_summary or 'core functionality'}.\n"
+            f"- **FR-1.1.2**: The system must implement the following key modules: {modules_str[:200]}.\n\n"
+            f"## 2. Non-Functional Requirements (NFR)\n\n"
+            f"### 2.1 Architecture & Performance\n"
+            f"- **NFR-2.1.1**: The system architecture must adhere to {und.architecture_type or 'standard'} conventions.\n\n"
+            f"## 3. Error Handling & Protocols\n"
+            f"- The system must validate inputs and gracefully handle operational errors.\n"
+        )
+        requirements = self._llm_call(
+            REPO_REQUIREMENTS_PROMPT.format(
+                repository_name=repo_full,
+                repo_name=repo_short,
+                architecture_type=und.architecture_type or "Unknown",
+                changed_files=changed_files_str,
+                project_summary=und.project_summary or "N/A",
+                project_purpose=und.project_purpose or "N/A",
+                modules=modules_str,
+                services=services_str,
+                apis=apis_str,
+                data_flow=data_flow_str,
+                existing_content=existing_req or "(No existing REQUIREMENTS.md — generate from scratch)",
+                rag_context=global_ctx,
+            ),
+            fallback=req_fallback,
+            doc_name="REQUIREMENTS.md",
+            warnings=warnings,
+        )
+        docs.file_docs["REQUIREMENTS.md"] = requirements
+
+        # ------------------------------------------------------------------
+        # 4. WORKFLOW.md  — incremental update
         # ------------------------------------------------------------------
         existing_workflow = self._read_existing(repo_out_dir, "WORKFLOW.md")
         process_signal_files_str = self._format_process_signal_files(meta.configuration_files)

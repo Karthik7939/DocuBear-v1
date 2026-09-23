@@ -165,7 +165,7 @@ class DocumentationPlan:
 
     folder_classifications: dict[str, str] = field(default_factory=dict)
     repository_docs: list[str] = field(default_factory=lambda: [
-        "README.md", "ARCHITECTURE.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md", "REPORTS.md"
+        "README.md", "ARCHITECTURE.md", "REQUIREMENTS.md", "WORKFLOW.md", "CHANGELOG.md", "SECURITY.md", "REPORTS.md"
     ])
     module_docs: list[str] = field(default_factory=list)
     file_docs: list[str] = field(default_factory=list)

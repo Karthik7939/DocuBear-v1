@@ -26,6 +26,8 @@ router = APIRouter()
 _STANDARD_DOC_NAMES = {
     "README.md",
     "ARCHITECTURE.md",
+    "REQUIREMENTS.md",
+    "REQUIREMENT.md",
     "WORKFLOW.md",
     "CHANGELOG.md",
     "SECURITY.md",

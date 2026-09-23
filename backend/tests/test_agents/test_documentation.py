@@ -76,13 +76,13 @@ class TestDocumentationAgent:
         assert result.recoverable is False
 
     def test_all_documents_generated(self):
-        """SharedMemory.documentation has all 5 documents after run."""
+        """SharedMemory.documentation has all 7 documents after run."""
         mem = _make_populated_memory()
         llm = _make_llm_client()
         agent = DocumentationAgent(llm_client=llm)
         agent.run(mem)
         docs = mem.documentation.all_documents()
-        assert len(docs) == 6
+        assert len(docs) == 7
 
     def test_readme_content_set(self):
         """README content is a non-empty string."""
@@ -91,13 +91,13 @@ class TestDocumentationAgent:
         agent.run(mem)
         assert len(mem.documentation.file_docs.get("README.md", "")) > 0
 
-    def test_llm_called_five_times(self):
-        """LLM generate() is called once per document type."""
+    def test_llm_called_six_times(self):
+        """LLM generate() is called once per document type (README, ARCH, REQ, WORKFLOW, CHANGELOG, SEC)."""
         mem = _make_populated_memory()
         llm = _make_llm_client()
         agent = DocumentationAgent(llm_client=llm)
         agent.run(mem)
-        assert llm.generate.call_count == 5
+        assert llm.generate.call_count == 6
 
     def test_generator_failure_produces_warning_not_crash(self):
         """A failing generator produces a warning but the agent still returns success."""
@@ -116,6 +116,6 @@ class TestDocumentationAgent:
         llm.generate.side_effect = Exception("LLM error")
         agent = DocumentationAgent(llm_client=llm)
         agent.run(mem)
-        # all_documents() should still return 5 entries (placeholder text counts)
+        # all_documents() should still return 7 entries (placeholder text counts)
         docs = mem.documentation.all_documents()
-        assert len(docs) == 6
+        assert len(docs) == 7
