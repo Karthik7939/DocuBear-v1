@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Repo } from "@/types";
+import Link from "next/link";
+import { Repo, RequirementsAnalysisResult } from "@/types";
 
 type BootstrapStatus = "idle" | "loading" | "success" | "error" | "no_backend";
 type IndexStatus = { indexed: boolean; vector_count: number; backend: string } | null;
@@ -14,23 +15,33 @@ export default function RepoCard({ repo }: { repo: Repo }) {
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("idle");
   const [bootstrapMessage, setBootstrapMessage] = useState<string>("");
   const [indexStatus, setIndexStatus] = useState<IndexStatus>(null);
+  const [reqData, setReqData] = useState<RequirementsAnalysisResult | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
   const fetchStatus = useCallback(async () => {
     setLoadingStatus(true);
     try {
-      const res = await fetch(
-        `/api/rag/status?repo=${encodeURIComponent(repo.fullName)}`,
-        { cache: "no-store" }
-      );
-      if (res.ok) {
-        const data = await res.json();
+      const [ragRes, reqRes] = await Promise.allSettled([
+        fetch(`/api/rag/status?repo=${encodeURIComponent(repo.fullName)}`, { cache: "no-store" }),
+        fetch(`/api/requirements/${encodeURIComponent(repo.fullName)}`, { cache: "no-store" })
+      ]);
+
+      if (ragRes.status === "fulfilled" && ragRes.value.ok) {
+        const data = await ragRes.value.json();
         setIndexStatus(data);
       } else {
         setIndexStatus(null);
       }
+
+      if (reqRes.status === "fulfilled" && reqRes.value.ok) {
+        const reqJson = await reqRes.value.json();
+        setReqData(reqJson);
+      } else {
+        setReqData(null);
+      }
     } catch {
       setIndexStatus(null);
+      setReqData(null);
     } finally {
       setLoadingStatus(false);
     }
@@ -141,6 +152,33 @@ export default function RepoCard({ repo }: { repo: Repo }) {
           </span>
 
           {indexBadge}
+
+          {/* Requirements specs status / upload button */}
+          {reqData ? (
+            (() => {
+              const passedCount = (reqData.functionalCount?.completed || 0) + (reqData.nonFunctionalCount?.completed || 0);
+              const totalCount = (reqData.functionalCount?.total || 0) + (reqData.nonFunctionalCount?.total || 0) || reqData.items?.length || 0;
+              return (
+                <Link
+                  href={`/requirements?repo=${encodeURIComponent(repo.fullName)}`}
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3.5 py-2 rounded-full border border-teal/40 bg-teal/10 text-teal hover:bg-teal hover:text-white transition-all shadow-xs active:scale-95"
+                  title={`Spec: ${reqData.fileName} • ${passedCount}/${totalCount} Requirements Passed (${reqData.overallScore}% score)`}
+                >
+                  <span className="text-emerald-700 font-extrabold">✓</span>
+                  <span>{passedCount}/{totalCount} Passed</span>
+                  <span className="text-[10px] opacity-75">({reqData.overallScore}%) ↗</span>
+                </Link>
+              );
+            })()
+          ) : (
+            <Link
+              href={`/requirements?repo=${encodeURIComponent(repo.fullName)}`}
+              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3.5 py-2 rounded-full border border-border bg-canvas text-text/80 hover:border-teal/50 hover:bg-teal/5 hover:text-teal transition-all shadow-xs active:scale-95"
+            >
+              <span>📄</span>
+              <span>Upload Specs</span>
+            </Link>
+          )}
 
           <button
             id={`bootstrap-btn-${repo.id}`}

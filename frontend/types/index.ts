@@ -44,4 +44,59 @@ export interface FileDocSummary {
   sourcePath: string;
   createdAt: string;
   hasChanges: boolean;
-}
+}
+
+export type RequirementType = "functional" | "non_functional";
+export type RequirementStatus = "completed" | "partial" | "missing";
+
+export interface RequirementItem {
+  id: string;
+  type: RequirementType;
+  category: string;
+  title: string;
+  description: string;
+  status: RequirementStatus;
+  confidence: number;
+  evidence_files: string[];
+  evidence_snippet: string;
+  remediation: string;
+}
+
+export interface RequirementsCountBreakdown {
+  total: number;
+  completed: number;
+  partial: number;
+  missing: number;
+}
+
+export interface RequirementsAnalysisResult {
+  repository: string;
+  fileName: string;
+  analyzedAt: string;
+  overallScore: number;
+  functionalScore: number;
+  functionalCount: RequirementsCountBreakdown;
+  nonFunctionalScore: number;
+  nonFunctionalCount: RequirementsCountBreakdown;
+  items: RequirementItem[];
+  summary: string;
+}
+
+export interface RequirementsSummary {
+  repository: string;
+  repoSlug: string;
+  fileName: string;
+  analyzedAt: string;
+  overallScore: number;
+  functionalScore: number;
+  functionalCount: RequirementsCountBreakdown;
+  nonFunctionalScore: number;
+  nonFunctionalCount: RequirementsCountBreakdown;
+  passedCount: number;
+  partialCount: number;
+  missingCount: number;
+  totalCount: number;
+  summary: string;
+}
+
+

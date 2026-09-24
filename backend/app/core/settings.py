@@ -43,25 +43,38 @@ class Settings:
     # Computed path helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _resolve_backend_path(path_str: str) -> Path:
+        p = Path(path_str)
+        if p.is_absolute():
+            return p
+        if p.exists():
+            return p.resolve()
+        backend_dir = Path(__file__).resolve().parent.parent.parent
+        candidate = backend_dir / p
+        if candidate.exists():
+            return candidate.resolve()
+        return candidate
+
     @property
     def repository_root_path(self) -> Path:
         """Return the repository root as a Path object."""
-        return Path(self.repository_root)
+        return self._resolve_backend_path(self.repository_root)
 
     @property
     def workflow_path_dir(self) -> Path:
         """Return the workflow directory as a Path object."""
-        return Path(self.workflow_path)
+        return self._resolve_backend_path(self.workflow_path)
 
     @property
     def generated_docs_path_dir(self) -> Path:
         """Return the root directory containing generated Markdown documents."""
-        return Path(self.generated_docs_path)
+        return self._resolve_backend_path(self.generated_docs_path)
 
     @property
     def log_file_path(self) -> Path:
         """Return the log file location as a Path object."""
-        return Path(self.log_file)
+        return self._resolve_backend_path(self.log_file)
 
     # ------------------------------------------------------------------
     # Convenience

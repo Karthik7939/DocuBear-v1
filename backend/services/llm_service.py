@@ -26,9 +26,11 @@ import os
 import re
 from typing import Optional
 
+from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 
@@ -59,16 +61,16 @@ class LLMService:
         self.gemini_key: str = os.getenv("GEMINI_API_KEY", "")
         self.groq_key: str   = os.getenv("GROQ_API_KEY", "")
         self.openai_key: str = os.getenv("OPENAI_API_KEY", "")
+        self.provider: str   = os.getenv("LLM_PROVIDER", "").lower()
         self.max_retries: int = int(os.getenv("MAX_RETRIES", "3"))
 
-        # Provider priority: Gemini → Groq → OpenAI → Mock
-        # Gemini 1.5 Flash has a 1 M token context window — ideal for large repos.
-        if self.gemini_key:
-            default_model = "gemini-3.5-flash-lite"
-        elif self.groq_key:
-            default_model = "llama-3.3-70b-specdec"
+        if self.provider == "groq" or (not self.provider and self.groq_key and not self.gemini_key):
+            default_model = "openai/gpt-oss-120b"
+        elif self.provider == "openai" or (not self.provider and self.openai_key and not self.gemini_key):
+            default_model = "gpt-4o-mini"
         else:
-            default_model = "gemini-3.5-flash-lite"
+            default_model = "gemini-3.6-flash"
+
         self.model: str = os.getenv("LLM_MODEL", default_model)
 
         # Build the underlying LangChain LLM
@@ -106,6 +108,21 @@ class LLMService:
                 raw = self._chain.invoke([HumanMessage(content=prompt)])
                 return self._strip_thinking_tags(raw)
             except Exception as exc:
+                logger.warning("Primary model %s failed (%s), attempting fallback...", self.model, exc)
+                # If a specific Gemini model is overloaded or encounters 503, try gemini-3.6-flash or mock
+                if self.gemini_key and self.model != "gemini-3.6-flash":
+                    try:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        fallback_llm = ChatGoogleGenerativeAI(
+                            model="gemini-3.6-flash",
+                            google_api_key=self.gemini_key,
+                            temperature=0.2,
+                        )
+                        fallback_chain = fallback_llm | StrOutputParser()
+                        raw = fallback_chain.invoke([HumanMessage(content=prompt)])
+                        return self._strip_thinking_tags(raw)
+                    except Exception as fb_exc:
+                        logger.error("Fallback LLM call also failed: %s", fb_exc)
                 logger.error("LangChain LLM call failed: %s", exc)
                 raise RuntimeError(f"LLM call failed: {exc}") from exc
 
@@ -171,26 +188,25 @@ class LLMService:
     # ------------------------------------------------------------------
 
     def _build_langchain_llm(self):
-        """
-        Detect available API keys and construct the appropriate LangChain LLM.
+        """Construct the appropriate LangChain LLM based on LLM_PROVIDER or key priority."""
+        if self.provider == "groq" and self.groq_key:
+            return self._build_groq()
+        if self.provider == "openai" and self.openai_key:
+            return self._build_openai()
+        if self.provider == "gemini" and self.gemini_key:
+            return self._build_gemini()
 
-        Priority: Gemini → Groq → OpenAI → None (mock fallback).
-
-        Returns:
-            BaseChatModel | None: LangChain chat model, or None if no key found.
-        """
+        # Automatic key detection fallback
+        if self.groq_key and not self.gemini_key:
+            return self._build_groq()
         if self.gemini_key:
             llm = self._build_gemini()
             if llm is not None:
                 return llm
-
         if self.groq_key:
             return self._build_groq()
-
         if self.openai_key:
-            llm = self._build_openai()
-            if llm is not None:
-                return llm
+            return self._build_openai()
 
         return None
 

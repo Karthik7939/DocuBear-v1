@@ -23,8 +23,7 @@ export function AnimatedContainer({
   return (
     <motion.div
       initial="hidden"
-      whileInView="show"
-      viewport={{ once: false, amount: 0.1 }}
+      animate="show"
       variants={{
         hidden: {},
         show: {

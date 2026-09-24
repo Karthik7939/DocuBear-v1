@@ -81,12 +81,6 @@ function scoreStatus(score: number): "good" | "warning" | "danger" {
   return "danger";
 }
 
-function coverageStatus(ratio: number): "good" | "warning" | "danger" {
-  if (ratio >= 0.5) return "good";
-  if (ratio >= 0.2) return "warning";
-  return "danger";
-}
-
 export default function AnalyticsPage() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string>("");
@@ -278,14 +272,14 @@ export default function AnalyticsPage() {
                   percent={run?.quality_score ?? 0}
                   displayValue={run ? run.quality_score.toFixed(1) : "—"}
                   status={scoreStatus(run?.quality_score ?? 0)}
-                  sublabel="LLM-graded formatting, completeness & accuracy"
+                  sublabel="LLM-graded formatting, completeness & clarity"
                 />
                 <RadialMeter
-                  label="Test Coverage Ratio"
-                  percent={run ? run.test_coverage_ratio * 100 : 0}
-                  displayValue={run ? `${Math.round(run.test_coverage_ratio * 100)}%` : "—"}
-                  status={coverageStatus(run?.test_coverage_ratio ?? 0)}
-                  sublabel={run ? `${run.test_files} test files / ${run.source_files} source files` : "No data yet"}
+                  label="Faithfulness Score"
+                  percent={run?.faithfulness_score ?? 0}
+                  displayValue={run ? run.faithfulness_score.toFixed(1) : "—"}
+                  status={scoreStatus(run?.faithfulness_score ?? 0)}
+                  sublabel="AST code grounding & hallucination check"
                 />
               </div>
             </FadeIn>

@@ -14,6 +14,7 @@ export default function Navbar() {
     { name: "Dashboard", href: "/" },
     { name: "Documentation", href: "/review" },
     { name: "File Docs", href: "/file-docs" },
+    { name: "Requirements", href: "/requirements" },
     { name: "Analytics", href: "/analytics" },
     { name: "Publish", href: "/publish" },
     { name: "Knowledge Base", href: "/knowledge-base" },

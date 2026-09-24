@@ -12,11 +12,16 @@ All Git work uses GitPython; raw shell commands are forbidden.
 """
 
 import logging
+import os
 from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from utils.git_utils import is_git_repository
+
+# Disable interactive terminal prompts so background jobs never hang
+os.environ["GIT_TERMINAL_PROMPT"] = "0"
+os.environ["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
 
 logger = logging.getLogger(__name__)
 
